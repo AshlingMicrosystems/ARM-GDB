@@ -1,6 +1,6 @@
 // options.h -- handle command line options for gold  -*- C++ -*-
 
-// Copyright (C) 2006-2022 Free Software Foundation, Inc.
+// Copyright (C) 2006-2024 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -846,6 +846,10 @@ class General_options
   DEFINE_enable(new_dtags, options::EXACTLY_TWO_DASHES, '\0', true,
 		N_("Enable use of DT_RUNPATH"),
 		N_("Disable use of DT_RUNPATH"));
+
+  DEFINE_enable(linker_version, options::EXACTLY_TWO_DASHES, '\0', false,
+		N_("Put the linker version string into the .comment section"),
+		N_("Put the linker version string into the .note.gnu.gold-version section"));
 
   DEFINE_bool(enum_size_warning, options::TWO_DASHES, '\0', true, NULL,
 	      N_("(ARM only) Do not warn about objects with incompatible "

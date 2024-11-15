@@ -1,5 +1,5 @@
 /* tc-mmix.h -- Header file for tc-mmix.c.
-   Copyright (C) 2001-2022 Free Software Foundation, Inc.
+   Copyright (C) 2001-2024 Free Software Foundation, Inc.
    Written by Hans-Peter Nilsson (hp@bitrange.com).
 
    This file is part of GAS, the GNU Assembler.
@@ -25,9 +25,6 @@
 #define TARGET_FORMAT "elf64-mmix"
 #define TARGET_ARCH bfd_arch_mmix
 #define TARGET_BYTES_BIG_ENDIAN 1
-
-extern const char mmix_comment_chars[];
-#define tc_comment_chars mmix_comment_chars
 
 extern const char mmix_symbol_chars[];
 #define tc_symbol_chars mmix_symbol_chars

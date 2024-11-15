@@ -1,5 +1,5 @@
 /* tc-ft32.c -- Assemble code for ft32
-   Copyright (C) 2008-2022 Free Software Foundation, Inc.
+   Copyright (C) 2008-2024 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -487,16 +487,16 @@ md_atof (int type, char *litP, int *sizeP)
   return NULL;
 }
 
-const char *md_shortopts = "";
+const char md_shortopts[] = "";
 
-struct option md_longopts[] =
+const struct option md_longopts[] =
 {
 #define OPTION_NORELAX (OPTION_MD_BASE)
   {"norelax", no_argument, NULL, OPTION_NORELAX},
   {"no-relax", no_argument, NULL, OPTION_NORELAX},
   {NULL, no_argument, NULL, 0}
 };
-size_t md_longopts_size = sizeof (md_longopts);
+const size_t md_longopts_size = sizeof (md_longopts);
 
 /* We have no target specific options yet, so these next
    two functions are empty.  */

@@ -1,5 +1,5 @@
 /* messages.c - error reporter -
-   Copyright (C) 1987-2022 Free Software Foundation, Inc.
+   Copyright (C) 1987-2024 Free Software Foundation, Inc.
    This file is part of GAS, the GNU Assembler.
 
    GAS is free software; you can redistribute it and/or modify
@@ -140,8 +140,6 @@ as_info_where (const char *file, unsigned int line, unsigned int indent,
 {
   va_list args;
   char buffer[2000];
-
-  gas_assert (file != NULL && line > 0 && indent <= INT_MAX);
 
   va_start (args, format);
   vsnprintf (buffer, sizeof (buffer), format, args);

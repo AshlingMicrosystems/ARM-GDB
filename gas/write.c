@@ -1,5 +1,5 @@
 /* write.c - emit .o file
-   Copyright (C) 1986-2022 Free Software Foundation, Inc.
+   Copyright (C) 1986-2024 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -26,6 +26,7 @@
 #include "output-file.h"
 #include "dwarf2dbg.h"
 #include "compress-debug.h"
+#include "codeview.h"
 
 #ifndef TC_FORCE_RELOCATION
 #define TC_FORCE_RELOCATION(FIX)		\
@@ -123,10 +124,10 @@ void print_fixup (fixS *);
 /* We generally attach relocs to frag chains.  However, after we have
    chained these all together into a segment, any relocs we add after
    that must be attached to a segment.  This will include relocs added
-   in md_estimate_size_for_relax, for example.  */
-static int frags_chained = 0;
+   in md_estimate_size_before_relax, for example.  */
+static bool frags_chained = false;
 
-static int n_fixups;
+static unsigned int n_fixups;
 
 #define RELOC_ENUM enum bfd_reloc_code_real
 
@@ -169,6 +170,7 @@ fix_new_internal (fragS *frag,		/* Which frag?  */
   fixP->fx_addnumber = 0;
   fixP->fx_tcbit = 0;
   fixP->fx_tcbit2 = 0;
+  fixP->fx_tcbit3 = 0;
   fixP->fx_done = 0;
   fixP->fx_no_overflow = 0;
   fixP->fx_signed = 0;
@@ -237,7 +239,7 @@ fixS *
 fix_new_exp (fragS *frag,		/* Which frag?  */
 	     unsigned long where,	/* Where in that frag?  */
 	     unsigned long size,	/* 1, 2, or 4 usually.  */
-	     expressionS *exp,		/* Expression.  */
+	     const expressionS *exp,	/* Expression.  */
 	     int pcrel,			/* TRUE if PC-relative relocation.  */
 	     RELOC_ENUM r_type		/* Relocation type.  */)
 {
@@ -253,20 +255,6 @@ fix_new_exp (fragS *frag,		/* Which frag?  */
     case O_register:
       as_bad (_("register value used as expression"));
       break;
-
-    case O_add:
-      /* This comes up when _GLOBAL_OFFSET_TABLE_+(.-L0) is read, if
-	 the difference expression cannot immediately be reduced.  */
-      {
-	symbolS *stmp = make_expr_symbol (exp);
-
-	exp->X_op = O_symbol;
-	exp->X_op_symbol = 0;
-	exp->X_add_symbol = stmp;
-	exp->X_add_number = 0;
-
-	return fix_new_exp (frag, where, size, exp, pcrel, r_type);
-      }
 
     case O_symbol_rva:
       add = exp->X_add_symbol;
@@ -289,6 +277,8 @@ fix_new_exp (fragS *frag,		/* Which frag?  */
       off = exp->X_add_number;
       break;
 
+    case O_add: /* This comes up when _GLOBAL_OFFSET_TABLE_+(.-L0) is read, if
+		   the difference expression cannot immediately be reduced.  */
     default:
       add = make_expr_symbol (exp);
       break;
@@ -380,7 +370,7 @@ chain_frchains_together_1 (segT section, struct frchain *frchp)
   fragS dummy, *prev_frag = &dummy;
   fixS fix_dummy, *prev_fix = &fix_dummy;
 
-  for (; frchp; frchp = frchp->frch_next)
+  do
     {
       prev_frag->fr_next = frchp->frch_root;
       prev_frag = frchp->frch_last;
@@ -393,7 +383,8 @@ chain_frchains_together_1 (segT section, struct frchain *frchp)
 	  seg_info (section)->fix_tail = frchp->fix_tail;
 	  prev_fix = frchp->fix_tail;
 	}
-    }
+      frchp = frchp->frch_next;
+    } while (frchp);
   gas_assert (prev_frag != &dummy
 	      && prev_frag->fr_type != 0);
   prev_frag->fr_next = 0;
@@ -416,7 +407,7 @@ chain_frchains_together (bfd *abfd ATTRIBUTE_UNUSED,
 
   /* Now that we've chained the frags together, we must add new fixups
      to the segment, not to the frag chain.  */
-  frags_chained = 1;
+  frags_chained = true;
 }
 
 static void
@@ -519,6 +510,32 @@ cvt_frag_to_fill (segT sec ATTRIBUTE_UNUSED, fragS *fragP)
 		fragP->fr_fix += md_long_jump_size;
 	  }
 	frag_wane (fragP);
+      }
+      break;
+#endif
+
+#if defined (TE_PE) && defined (O_secrel)
+    case rs_cv_comp:
+      {
+	offsetT value = S_GET_VALUE (fragP->fr_symbol);
+	int size;
+
+	if (!S_IS_DEFINED (fragP->fr_symbol))
+	  {
+	    as_bad_where (fragP->fr_file, fragP->fr_line,
+			  _(".cv_%ccomp operand is an undefined symbol: %s"),
+			  fragP->fr_subtype ? 's' : 'u',
+			  S_GET_NAME (fragP->fr_symbol));
+	  }
+
+	size = output_cv_comp (fragP->fr_literal + fragP->fr_fix, value,
+			       fragP->fr_subtype);
+
+	fragP->fr_fix += size;
+	fragP->fr_type = rs_fill;
+	fragP->fr_var = 0;
+	fragP->fr_offset = 0;
+	fragP->fr_symbol = NULL;
       }
       break;
 #endif
@@ -777,6 +794,7 @@ adjust_reloc_syms (bfd *abfd ATTRIBUTE_UNUSED,
 {
   segment_info_type *seginfo = seg_info (sec);
   fixS *fixp;
+  valueT val;
 
   if (seginfo == NULL)
     return;
@@ -888,10 +906,20 @@ adjust_reloc_syms (bfd *abfd ATTRIBUTE_UNUSED,
 	if ((symsec->flags & SEC_THREAD_LOCAL) != 0)
 	  continue;
 
+	val = S_GET_VALUE (sym);
+
+#if defined(TC_AARCH64) && defined(OBJ_COFF)
+	/* coff aarch64 relocation offsets need to be limited to 21bits.
+	   This is because addend may need to be stored in an ADRP instruction.
+	   In this case the addend cannot be stored down shifted otherwise rounding errors occur. */
+	if ((val + 0x100000) > 0x1fffff)
+	  continue;
+#endif
+
 	/* We refetch the segment when calling section_symbol, rather
 	   than using symsec, because S_GET_VALUE may wind up changing
 	   the section when it calls resolve_symbol_value.  */
-	fixp->fx_offset += S_GET_VALUE (sym);
+	fixp->fx_offset += val;
 	fixp->fx_addsy = section_symbol (S_GET_SEGMENT (sym));
 #ifdef DEBUG5
 	fprintf (stderr, "\nadjusted fixup:\n");
@@ -1681,7 +1709,12 @@ write_contents (bfd *abfd ATTRIBUTE_UNUSED,
 			  bfd_get_filename (stdoutput),
 			  bfd_errmsg (bfd_get_error ()));
 	      offset += count;
-	      free (buf);
+#ifndef NO_LISTING
+	      if (listing & LISTING_LISTING)
+		f->fr_opcode = buf;
+	      else
+#endif
+		free (buf);
 	    }
 	  continue;
 	}
@@ -2328,8 +2361,6 @@ write_object_file (void)
     maybe_generate_build_notes ();
 #endif
 
-  PROGRESS (1);
-
 #ifdef tc_frob_file_before_adjust
   tc_frob_file_before_adjust ();
 #endif
@@ -2471,8 +2502,6 @@ write_object_file (void)
 	    skip_next_symbol = true;
 	}
     }
-
-  PROGRESS (1);
 
   /* Now do any format-specific adjustments to the symbol table, such
      as adding file symbols.  */
@@ -2765,6 +2794,9 @@ relax_segment (struct frag *segment_frag_root, segT segment, int pass)
 #endif
 
 	case rs_leb128:
+#if defined (TE_PE) && defined (O_secrel)
+	case rs_cv_comp:
+#endif
 	  /* Initial guess is always 1; doing otherwise can result in
 	     stable solutions that are larger than the minimum.  */
 	  address += fragP->fr_offset = 1;
@@ -3117,6 +3149,20 @@ relax_segment (struct frag *segment_frag_root, segT segment, int pass)
 		  fragP->fr_offset = size;
 		}
 		break;
+
+#if defined (TE_PE) && defined (O_secrel)
+	      case rs_cv_comp:
+		{
+		  valueT value;
+		  offsetT size;
+
+		  value = resolve_symbol_value (fragP->fr_symbol);
+		  size = sizeof_cv_comp (value, fragP->fr_subtype);
+		  growth = size - fragP->fr_offset;
+		  fragP->fr_offset = size;
+		}
+	      break;
+#endif
 
 	      case rs_cfa:
 		growth = eh_frame_relax_frag (fragP);

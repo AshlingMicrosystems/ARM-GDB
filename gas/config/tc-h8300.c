@@ -1,5 +1,5 @@
 /* tc-h8300.c -- Assemble code for the Renesas H8/300
-   Copyright (C) 1991-2022 Free Software Foundation, Inc.
+   Copyright (C) 1991-2024 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -2076,15 +2076,15 @@ md_atof (int type, char *litP, int *sizeP)
 #define OPTION_H_TICK_HEX      (OPTION_MD_BASE)
 #define OPTION_MACH            (OPTION_MD_BASE+1)
 
-const char *md_shortopts = "";
-struct option md_longopts[] =
+const char md_shortopts[] = "";
+const struct option md_longopts[] =
 {
   { "h-tick-hex", no_argument,	      NULL, OPTION_H_TICK_HEX  },
   { "mach", required_argument, NULL, OPTION_MACH },
   {NULL, no_argument, NULL, 0}
 };
 
-size_t md_longopts_size = sizeof (md_longopts);
+const size_t md_longopts_size = sizeof (md_longopts);
 
 struct mach_func
 {

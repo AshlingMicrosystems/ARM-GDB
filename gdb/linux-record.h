@@ -1,6 +1,6 @@
 /* Process record and replay target code for GNU/Linux.
 
-   Copyright (C) 2008-2023 Free Software Foundation, Inc.
+   Copyright (C) 2008-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -512,6 +512,7 @@ enum gdb_syscall {
   gdb_sys_inotify_init1 = 332,
   gdb_sys_getrandom = 355,
   gdb_sys_statx = 383,
+  gdb_sys_clock_gettime64 = 403,
   gdb_sys_socket = 500,
   gdb_sys_connect = 501,
   gdb_sys_accept = 502,

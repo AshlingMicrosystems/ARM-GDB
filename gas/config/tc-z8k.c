@@ -1,5 +1,5 @@
 /* tc-z8k.c -- Assemble code for the Zilog Z800n
-   Copyright (C) 1992-2022 Free Software Foundation, Inc.
+   Copyright (C) 1992-2024 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -1309,16 +1309,16 @@ md_atof (int type, char *litP, int *sizeP)
   return ieee_md_atof (type, litP, sizeP, true);
 }
 
-const char *md_shortopts = "z:";
+const char md_shortopts[] = "z:";
 
-struct option md_longopts[] =
+const struct option md_longopts[] =
   {
 #define OPTION_RELAX  (OPTION_MD_BASE)
     {"linkrelax", no_argument, NULL, OPTION_RELAX},
     {NULL, no_argument, NULL, 0}
   };
 
-size_t md_longopts_size = sizeof (md_longopts);
+const size_t md_longopts_size = sizeof (md_longopts);
 
 int
 md_parse_option (int c, const char *arg)

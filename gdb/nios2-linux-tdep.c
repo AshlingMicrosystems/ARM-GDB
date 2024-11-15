@@ -1,5 +1,5 @@
 /* Target-dependent code for GNU/Linux on Nios II.
-   Copyright (C) 2012-2023 Free Software Foundation, Inc.
+   Copyright (C) 2012-2024 Free Software Foundation, Inc.
    Contributed by Mentor Graphics, Inc.
 
    This file is part of GDB.
@@ -17,7 +17,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "defs.h"
 #include "frame.h"
 #include "osabi.h"
 #include "solib-svr4.h"
@@ -62,7 +61,6 @@ nios2_supply_gregset (const struct regset *regset,
 {
   const gdb_byte *gregs = (const gdb_byte *) gregs_buf;
   int regno;
-  static const gdb_byte zero_buf[4] = {0, 0, 0, 0};
 
   for (regno = NIOS2_Z_REGNUM; regno <= NIOS2_MPUACC_REGNUM; regno++)
     if (regnum == -1 || regnum == regno)
@@ -70,7 +68,7 @@ nios2_supply_gregset (const struct regset *regset,
 	if (reg_offsets[regno] != -1)
 	  regcache->raw_supply (regno, gregs + 4 * reg_offsets[regno]);
 	else
-	  regcache->raw_supply (regno, zero_buf);
+	  regcache->raw_supply_zeroed (regno);
       }
 }
 
@@ -134,7 +132,7 @@ nios2_iterate_over_regset_sections (struct gdbarch *gdbarch,
 
 static void
 nios2_linux_rt_sigreturn_init (const struct tramp_frame *self,
-			       frame_info_ptr next_frame,
+			       const frame_info_ptr &next_frame,
 			       struct trad_frame_cache *this_cache,
 			       CORE_ADDR func)
 {
@@ -187,7 +185,7 @@ static struct tramp_frame nios2_r2_linux_rt_sigreturn_tramp_frame =
    instruction to be executed.  */
 
 static CORE_ADDR
-nios2_linux_syscall_next_pc (frame_info_ptr frame,
+nios2_linux_syscall_next_pc (const frame_info_ptr &frame,
 			     const struct nios2_opcode *op)
 {
   CORE_ADDR pc = get_frame_pc (frame);

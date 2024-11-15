@@ -1,6 +1,6 @@
 /* tc-wasm32.c -- Assembler code for the wasm32 target.
 
-   Copyright (C) 2017-2022 Free Software Foundation, Inc.
+   Copyright (C) 2017-2024 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -78,7 +78,7 @@ const char comment_chars[] = ";#";
 const char line_comment_chars[] = ";#";
 const char line_separator_chars[] = "";
 
-const char *md_shortopts = "m:";
+const char md_shortopts[] = "m:";
 
 const char EXP_CHARS[] = "eE";
 const char FLT_CHARS[] = "dD";
@@ -94,12 +94,12 @@ const pseudo_typeS md_pseudo_table[] =
 
 static htab_t wasm32_hash;
 
-struct option md_longopts[] =
+const struct option md_longopts[] =
 {
   {NULL, no_argument, NULL, 0}
 };
 
-size_t md_longopts_size = sizeof (md_longopts);
+const size_t md_longopts_size = sizeof (md_longopts);
 
 /* No relaxation/no machine-dependent frags.  */
 

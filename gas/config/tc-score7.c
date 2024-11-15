@@ -1,5 +1,5 @@
 /* tc-score7.c -- Assembler for Score7
-   Copyright (C) 2009-2022 Free Software Foundation, Inc.
+   Copyright (C) 2009-2024 Free Software Foundation, Inc.
    Contributed by:
    Brain.lin (brain.lin@sunplusct.com)
    Mei Ligang (ligang@sunnorth.com.cn)
@@ -5367,21 +5367,6 @@ s7_build_reg_hsh (struct s7_reg_map *map)
 
 
 
-/* If we change section we must dump the literal pool first.  */
-static void
-s7_s_score_bss (int ignore ATTRIBUTE_UNUSED)
-{
-  subseg_set (bss_section, (subsegT) get_absolute_expression ());
-  demand_empty_rest_of_line ();
-}
-
-static void
-s7_s_score_text (int ignore)
-{
-  obj_elf_text (ignore);
-  record_alignment (now_seg, 2);
-}
-
 static void
 s7_s_section (int ignore)
 {
@@ -5927,7 +5912,7 @@ s7_s_score_lcomm (int bytes_p)
 
   c = get_symbol_name (&name);
   p = input_line_pointer;
-  *p = c;
+  restore_line_pointer (c);
 
   if (name == p)
     {
@@ -5936,7 +5921,7 @@ s7_s_score_lcomm (int bytes_p)
       return;
     }
 
-  SKIP_WHITESPACE_AFTER_NAME ();
+  SKIP_WHITESPACE ();
 
   /* Accept an optional comma after the name.  The comma used to be
      required, but Irix 5 cc does not generate it.  */
@@ -6028,18 +6013,6 @@ s7_s_score_lcomm (int bytes_p)
         }
 
       record_alignment (bss_seg, align);
-    }
-  else
-    {
-      /* Assume some objects may require alignment on some systems.  */
-#if defined (TC_ALPHA) && ! defined (VMS)
-      if (temp > 1)
-        {
-          align = ffs (temp) - 1;
-          if (temp % (1 << align))
-            abort ();
-        }
-#endif
     }
 
   *p = 0;

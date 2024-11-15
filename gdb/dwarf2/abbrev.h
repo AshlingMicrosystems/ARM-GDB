@@ -1,6 +1,6 @@
 /* DWARF abbrev table
 
-   Copyright (C) 1994-2023 Free Software Foundation, Inc.
+   Copyright (C) 1994-2024 Free Software Foundation, Inc.
 
    Adapted by Gary Funck (gary@intrepid.com), Intrepid Technology,
    Inc.  with support from Florida State University (under contract
@@ -27,7 +27,11 @@
 #ifndef GDB_DWARF2_ABBREV_H
 #define GDB_DWARF2_ABBREV_H
 
+#include "dwarf2.h"
+#include "gdbsupport/gdb-hashtab.h"
+#include "gdbsupport/gdb_obstack.h"
 #include "hashtab.h"
+#include "types.h"
 
 struct attr_abbrev
 {

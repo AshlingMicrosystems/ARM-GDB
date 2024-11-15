@@ -1,5 +1,5 @@
 /* tc-riscv.h -- header file for tc-riscv.c.
-   Copyright (C) 2011-2022 Free Software Foundation, Inc.
+   Copyright (C) 2011-2024 Free Software Foundation, Inc.
 
    Contributed by Andrew Waterman (andrew@sifive.com).
    Based on MIPS target.
@@ -80,6 +80,9 @@ extern int riscv_parse_long_option (const char *);
 extern void riscv_pre_output_hook (void);
 #define GAS_SORT_RELOCS 1
 
+#define md_end riscv_md_end
+extern void riscv_md_end (void);
+
 /* Let the linker resolve all the relocs due to relaxation.  */
 #define tc_fix_adjustable(fixp) 0
 #define md_allow_local_subtract(l,r,s) 0
@@ -101,6 +104,14 @@ extern void riscv_pre_output_hook (void);
 #define TC_FORCE_RELOCATION_LOCAL(FIX) 1
 #define DIFF_EXPR_OK 1
 
+struct riscv_fix
+{
+  int source_macro;
+};
+
+#define TC_FIX_TYPE struct riscv_fix
+#define TC_INIT_FIX_DATA(FIX) (FIX)->tc_fix_data.source_macro = -1
+
 extern void riscv_pop_insert (void);
 #define md_pop_insert()		riscv_pop_insert ()
 
@@ -117,11 +128,18 @@ extern int tc_riscv_regname_to_dw2regnum (char *);
 /* Even on RV64, use 4-byte alignment, as F registers may be only 32 bits.  */
 #define DWARF2_CIE_DATA_ALIGNMENT -4
 
+#define md_elf_section_change_hook riscv_elf_section_change_hook
+extern void riscv_elf_section_change_hook (void);
+
 #define elf_tc_final_processing riscv_elf_final_processing
 extern void riscv_elf_final_processing (void);
 
 /* Adjust debug_line after relaxation.  */
 #define DWARF2_USE_FIXED_ADVANCE_PC 1
+
+#define md_parse_name(name, exp, mode, c) \
+  riscv_parse_name (name, exp, mode)
+bool riscv_parse_name (const char *, struct expressionS *, enum expr_mode);
 
 #define md_finish riscv_md_finish
 #define CONVERT_SYMBOLIC_ATTRIBUTE riscv_convert_symbolic_attribute
@@ -138,6 +156,8 @@ void riscv_mapping_state (enum riscv_seg_mstate, int, bool);
 struct riscv_segment_info_type
 {
   enum riscv_seg_mstate map_state;
+  bool rvc;
+  bool last_insn16;
   /* The current mapping symbol with architecture string.  */
   symbolS *arch_map_symbol;
 };

@@ -1,6 +1,6 @@
 %{ /* deffilep.y - parser for .def files */
 
-/*   Copyright (C) 1995-2022 Free Software Foundation, Inc.
+/*   Copyright (C) 1995-2024 Free Software Foundation, Inc.
 
      This file is part of GNU Binutils.
 
@@ -610,11 +610,10 @@ cmp_export_elem (const def_file_export *e, const char *ex_name,
 {
   int r;
 
-  if ((r = are_names_equal (ex_name, e->name)) != 0)
+  if ((r = are_names_equal (its_name ? its_name : ex_name,
+			    e->its_name ? e->its_name : e->name)) != 0)
     return r;
   if ((r = are_names_equal (in_name, e->internal_name)) != 0)
-    return r;
-  if ((r = are_names_equal (its_name, e->its_name)) != 0)
     return r;
   return (ord - e->ordinal);
 }
@@ -1134,7 +1133,7 @@ def_image_name (const char *name, bfd_vma base, int is_dll)
       const char* image_name = lbasename (name);
 
       if (image_name != name)
-	einfo ("%s:%d: Warning: path components stripped from %s, '%s'\n",
+	einfo (_("%s:%d: Warning: path components stripped from %s, '%s'\n"),
 	       def_filename, linenumber, is_dll ? "LIBRARY" : "NAME",
 	       name);
       free (def->name);

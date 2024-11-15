@@ -1,4 +1,4 @@
-# Copyright (C) 2007-2023 Free Software Foundation, Inc.
+# Copyright (C) 2007-2024 Free Software Foundation, Inc.
 
 # This file is part of GDB.
 
@@ -191,6 +191,8 @@ $(outdir)/%.dat: %.xml number-regs.xsl sort-regs.xsl gdbserver-regs.xsl
 	echo "xmltarget:$(<F)" >> $(outdir)/$*.tmp
 	echo "expedite:$(if $($*-expedite),$($*-expedite),$($(firstword $(subst -, ,$(notdir $*)))-expedite))" \
 	  >> $(outdir)/$*.tmp
+	$(XSLTPROC) --path "$(PWD)" --xinclude print-osabi.xsl $< \
+	  >> $(outdir)/$*.tmp
 	$(XSLTPROC) --path "$(PWD)" --xinclude number-regs.xsl $< | \
 	  $(XSLTPROC) sort-regs.xsl - | \
 	  $(XSLTPROC) gdbserver-regs.xsl - >> $(outdir)/$*.tmp
@@ -222,12 +224,10 @@ FEATURE_XMLFILES = aarch64-core.xml \
 	i386/32bit-sse.xml \
 	i386/32bit-linux.xml \
 	i386/32bit-avx.xml \
-	i386/32bit-mpx.xml \
 	i386/32bit-avx512.xml \
 	i386/32bit-segments.xml \
 	i386/64bit-avx512.xml \
 	i386/64bit-core.xml \
-	i386/64bit-mpx.xml \
 	i386/64bit-segments.xml \
 	i386/64bit-avx.xml \
 	i386/64bit-linux.xml \
@@ -237,6 +237,9 @@ FEATURE_XMLFILES = aarch64-core.xml \
 	loongarch/base32.xml \
 	loongarch/base64.xml \
 	loongarch/fpu.xml \
+	loongarch/lsx.xml \
+	loongarch/lasx.xml \
+	loongarch/lbt.xml \
 	riscv/rv32e-xregs.xml \
 	riscv/32bit-cpu.xml \
 	riscv/32bit-fpu.xml \

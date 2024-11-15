@@ -1,6 +1,6 @@
 /* Target-dependent code for GNU/Linux x86-64.
 
-   Copyright (C) 2001-2023 Free Software Foundation, Inc.
+   Copyright (C) 2001-2024 Free Software Foundation, Inc.
    Contributed by Jiri Smid, SuSE Labs.
 
    This file is part of GDB.
@@ -18,8 +18,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "defs.h"
 #include "arch-utils.h"
+#include "extract-store-integer.h"
 #include "frame.h"
 #include "gdbcore.h"
 #include "regcache.h"
@@ -42,6 +42,7 @@
 #include "arch/amd64.h"
 #include "target-descriptions.h"
 #include "expop.h"
+#include "arch/amd64-linux-tdesc.h"
 
 /* The syscall's XML filename for i386.  */
 #define XML_SYSCALL_FILENAME_AMD64 "syscalls/amd64-linux.xml"
@@ -85,6 +86,8 @@ int amd64_linux_gregset_reg_offset[] =
   -1, -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1,
+  /* MPX is deprecated.  Yet we keep this to not give the registers below
+     a new number.  That could break older gdbservers.  */
   -1, -1, -1, -1,		/* MPX registers BND0 ... BND3.  */
   -1, -1,			/* MPX registers BNDCFGU and BNDSTATUS.  */
   -1, -1, -1, -1, -1, -1, -1, -1,     /* xmm16 ... xmm31 (AVX512)  */
@@ -133,7 +136,7 @@ static const gdb_byte amd64_x32_linux_sigtramp_code[] =
    the routine.  Otherwise, return 0.  */
 
 static CORE_ADDR
-amd64_linux_sigtramp_start (frame_info_ptr this_frame)
+amd64_linux_sigtramp_start (const frame_info_ptr &this_frame)
 {
   struct gdbarch *gdbarch;
   const gdb_byte *sigtramp_code;
@@ -175,7 +178,7 @@ amd64_linux_sigtramp_start (frame_info_ptr this_frame)
    routine.  */
 
 static int
-amd64_linux_sigtramp_p (frame_info_ptr this_frame)
+amd64_linux_sigtramp_p (const frame_info_ptr &this_frame)
 {
   CORE_ADDR pc = get_frame_pc (this_frame);
   const char *name;
@@ -201,7 +204,7 @@ amd64_linux_sigtramp_p (frame_info_ptr this_frame)
    address of the associated sigcontext structure.  */
 
 static CORE_ADDR
-amd64_linux_sigcontext_addr (frame_info_ptr this_frame)
+amd64_linux_sigcontext_addr (const frame_info_ptr &this_frame)
 {
   struct gdbarch *gdbarch = get_frame_arch (this_frame);
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
@@ -281,9 +284,7 @@ static int
 amd64_linux_register_reggroup_p (struct gdbarch *gdbarch, int regnum,
 				 const struct reggroup *group)
 { 
-  if (regnum == AMD64_LINUX_ORIG_RAX_REGNUM
-      || regnum == AMD64_FSBASE_REGNUM
-      || regnum == AMD64_GSBASE_REGNUM)
+  if (regnum == AMD64_LINUX_ORIG_RAX_REGNUM)
     return (group == system_reggroup
 	    || group == save_reggroup
 	    || group == restore_reggroup);
@@ -1579,37 +1580,6 @@ amd64_linux_record_signal (struct gdbarch *gdbarch,
   return 0;
 }
 
-const target_desc *
-amd64_linux_read_description (uint64_t xcr0_features_bit, bool is_x32)
-{
-  static target_desc *amd64_linux_tdescs \
-    [2/*AVX*/][2/*MPX*/][2/*AVX512*/][2/*PKRU*/] = {};
-  static target_desc *x32_linux_tdescs \
-    [2/*AVX*/][2/*AVX512*/][2/*PKRU*/] = {};
-
-  target_desc **tdesc;
-
-  if (is_x32)
-    {
-      tdesc = &x32_linux_tdescs[(xcr0_features_bit & X86_XSTATE_AVX) ? 1 : 0 ]
-	[(xcr0_features_bit & X86_XSTATE_AVX512) ? 1 : 0]
-	[(xcr0_features_bit & X86_XSTATE_PKRU) ? 1 : 0];
-    }
-  else
-    {
-      tdesc = &amd64_linux_tdescs[(xcr0_features_bit & X86_XSTATE_AVX) ? 1 : 0]
-	[(xcr0_features_bit & X86_XSTATE_MPX) ? 1 : 0]
-	[(xcr0_features_bit & X86_XSTATE_AVX512) ? 1 : 0]
-	[(xcr0_features_bit & X86_XSTATE_PKRU) ? 1 : 0];
-    }
-
-  if (*tdesc == NULL)
-    *tdesc = amd64_create_target_description (xcr0_features_bit, is_x32,
-					      true, true);
-
-  return *tdesc;
-}
-
 /* Get Linux/x86 target description from core dump.  */
 
 static const struct target_desc *
@@ -1618,7 +1588,10 @@ amd64_linux_core_read_description (struct gdbarch *gdbarch,
 				  bfd *abfd)
 {
   /* Linux/x86-64.  */
-  uint64_t xcr0 = i386_linux_core_read_xcr0 (abfd);
+  x86_xsave_layout layout;
+  uint64_t xcr0 = i386_linux_core_read_xsave_info (abfd, layout);
+  if (xcr0 == 0)
+    xcr0 = X86_XSTATE_SSE_MASK;
 
   return amd64_linux_read_description (xcr0 & X86_XSTATE_ALL_MASK,
 				       gdbarch_ptr_bit (gdbarch) == 32);
@@ -1663,8 +1636,10 @@ amd64_linux_iterate_over_regset_sections (struct gdbarch *gdbarch,
 
   cb (".reg", 27 * 8, 27 * 8, &i386_gregset, NULL, cb_data);
   cb (".reg2", 512, 512, &amd64_fpregset, NULL, cb_data);
-  cb (".reg-xstate", X86_XSTATE_SIZE (tdep->xcr0), X86_XSTATE_SIZE (tdep->xcr0),
-      &amd64_linux_xstateregset, "XSAVE extended state", cb_data);
+  if (tdep->xsave_layout.sizeof_xsave != 0)
+    cb (".reg-xstate", tdep->xsave_layout.sizeof_xsave,
+	tdep->xsave_layout.sizeof_xsave, &amd64_linux_xstateregset,
+	"XSAVE extended state", cb_data);
 }
 
 /* The instruction sequences used in x86_64 machines for a
@@ -1806,6 +1781,8 @@ amd64_linux_init_abi_common(struct gdbarch_info info, struct gdbarch *gdbarch,
   tdep->sc_num_regs = ARRAY_SIZE (amd64_linux_sc_reg_offset);
 
   tdep->xsave_xcr0_offset = I386_LINUX_XSAVE_XCR0_OFFSET;
+  set_gdbarch_core_read_x86_xsave_layout
+    (gdbarch, i386_linux_core_read_x86_xsave_layout);
 
   /* Add the %orig_rax register used for syscall restarting.  */
   set_gdbarch_write_pc (gdbarch, amd64_linux_write_pc);
@@ -1841,9 +1818,6 @@ amd64_linux_init_abi_common(struct gdbarch_info info, struct gdbarch *gdbarch,
 
   set_gdbarch_process_record (gdbarch, i386_process_record);
   set_gdbarch_process_record_signal (gdbarch, amd64_linux_record_signal);
-
-  set_gdbarch_get_siginfo_type (gdbarch, x86_linux_get_siginfo_type);
-  set_gdbarch_report_signal_info (gdbarch, i386_linux_report_signal_info);
 }
 
 static void

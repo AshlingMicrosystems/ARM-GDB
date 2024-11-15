@@ -1,6 +1,6 @@
 /* Process record and replay target for GDB, the GNU debugger.
 
-   Copyright (C) 2013-2023 Free Software Foundation, Inc.
+   Copyright (C) 2013-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -20,6 +20,8 @@
 #ifndef RECORD_FULL_H
 #define RECORD_FULL_H
 
+#include "gdbsupport/scoped_restore.h"
+
 extern bool record_full_memory_query;
 
 extern int record_full_arch_list_add_reg (struct regcache *regcache, int num);
@@ -28,6 +30,9 @@ extern int record_full_arch_list_add_end (void);
 
 /* Returns true if the process record target is open.  */
 extern int record_full_is_used (void);
+
+/* Whether the inferior is being replayed, or is executing normally.  */
+extern bool record_full_is_replaying ();
 
 extern scoped_restore_tmpl<int> record_full_gdb_operation_disable_set ();
 

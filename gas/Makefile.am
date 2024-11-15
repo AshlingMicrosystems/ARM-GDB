@@ -1,6 +1,6 @@
 ## Process this file with automake to generate Makefile.in
 #
-#   Copyright (C) 2012-2022 Free Software Foundation, Inc.
+#   Copyright (C) 2012-2024 Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -82,6 +82,7 @@ GAS_CFILES = \
 	flonum-mult.c \
 	frags.c \
 	gen-sframe.c \
+	ginsn.c \
 	hash.c \
 	input-file.c \
 	input-scrub.c \
@@ -93,6 +94,8 @@ GAS_CFILES = \
 	read.c \
 	remap.c \
 	sb.c \
+	scfidw2gen.c \
+	scfi.c \
 	sframe-opt.c \
 	stabs.c \
 	subsegs.c \
@@ -118,6 +121,7 @@ HFILES = \
 	flonum.h \
 	frags.h \
 	gen-sframe.h \
+	ginsn.h \
 	hash.h \
 	input-file.h \
 	itbl-lex.h \
@@ -128,6 +132,8 @@ HFILES = \
 	output-file.h \
 	read.h \
 	sb.h \
+	scfidw2gen.h \
+	scfi.h \
 	subsegs.h \
 	symbols.h \
 	tc.h \
@@ -160,6 +166,7 @@ TARGET_CPU_CFILES = \
 	config/tc-i386.c \
 	config/tc-ip2k.c \
 	config/tc-iq2000.c \
+	config/tc-kvx.c \
 	config/tc-lm32.c \
 	config/tc-loongarch.c \
 	config/tc-m32c.c \
@@ -235,6 +242,7 @@ TARGET_CPU_HFILES = \
 	config/tc-i386.h \
 	config/tc-ip2k.h \
 	config/tc-iq2000.h \
+	config/tc-kvx.h \
 	config/tc-lm32.h \
 	config/tc-m32c.h \
 	config/tc-m32r.h \
@@ -286,7 +294,9 @@ TARGET_CPU_HFILES = \
 TARGET_EXTRA_FILES = \
 	config/bfin-lex-wrapper.c \
 	config/xtensa-relax.c \
-	config/xtensa-relax.h
+	config/xtensa-relax.h \
+	config/kvx-parse.h \
+	config/kvx-parse.c
 
 # OBJ files in config
 
@@ -332,7 +342,6 @@ TARG_ENV_HFILES = \
 	config/te-hppa.h \
 	config/te-hppa64.h \
 	config/te-hppalinux64.h \
-	config/te-ia64aix.h \
 	config/te-interix.h \
 	config/te-lynx.h \
 	config/te-macos.h \
@@ -341,7 +350,6 @@ TARG_ENV_HFILES = \
 	config/te-pc532mach.h \
 	config/te-pe.h \
 	config/te-solaris.h \
-	config/te-svr4.h \
 	config/te-tmips.h \
 	config/te-vxworks.h \
 	config/te-wince-pe.h
@@ -354,9 +362,6 @@ TARG_ENV_CFILES = \
 MULTI_CFILES = \
 	config/e-crisaout.c \
 	config/e-criself.c \
-	config/e-i386aout.c \
-	config/e-i386coff.c \
-	config/e-i386elf.c \
 	config/e-mipself.c
 
 CONFIG_ATOF_CFILES = \
@@ -454,7 +459,7 @@ i386_tbl_deps = $(srcdir)/../opcodes/i386-opc.tbl \
 	$(srcdir)/../opcodes/i386-reg.tbl \
 	$(srcdir)/../opcodes/i386-gen.c $(srcdir)/../opcodes/i386-opc.h
 
-$(srcdir)/../opcodes/i386%init.h $(srcdir)/../opcodes/i386%tbl.h: @MAINT@ $(i386_tbl_deps)
+$(srcdir)/../opcodes/i386%init.h $(srcdir)/../opcodes/i386%tbl.h $(srcdir)/../opcodes/i386%mnem.h: @MAINT@ $(i386_tbl_deps)
 	@echo '"$@" is outdated wrt "$?"' >&2
 	@echo 'Please rebuild from the top level or in $(CURDIR)/../opcodes/' >&2
 	@false

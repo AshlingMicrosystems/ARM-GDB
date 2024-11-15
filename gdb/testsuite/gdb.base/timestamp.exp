@@ -1,5 +1,12 @@
-# Copyright 2022-2023 Free Software Foundation, Inc.
+<<<<<<<< HEAD:sim/example-synacor/Makefile.in
+#    Makefile template for Configure for the example synacor simulator.
+#    Copyright (C) 2005-2023 Free Software Foundation, Inc.
+#    Written by Mike Frysinger <vapier@gentoo.org>
+#
+========
+# Copyright 2022-2024 Free Software Foundation, Inc.
 
+>>>>>>>> 75e11412937864f1f3d1a40820f5eabda6aee1dc:gdb/testsuite/gdb.base/timestamp.exp
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 3 of the License, or
@@ -21,4 +28,4 @@ clean_restart
 gdb_test_no_output "set debug expression 1"
 gdb_test_no_output "set debug timestamp 1"
 
-gdb_test "print 23" "\[0-9\]+\\.\[0-9\]+ Operation: OP_LONG.* = 23"
+gdb_test "print 23" "$decimal\\.$decimal Operation: OP_LONG.* = 23"

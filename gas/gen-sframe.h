@@ -1,5 +1,5 @@
 /* gen-sframe.h - Support for generating SFrame.
-   Copyright (C) 2022 Free Software Foundation, Inc.
+   Copyright (C) 2022-2024 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -23,6 +23,8 @@
 
 #define SFRAME_FRE_ELEM_LOC_REG		0
 #define SFRAME_FRE_ELEM_LOC_STACK	1
+
+#define SFRAME_FRE_BASE_REG_INVAL	((unsigned int)-1)
 
 /* SFrame Frame Row Entry (FRE).
 
@@ -146,10 +148,10 @@ struct sframe_version_ops
   unsigned char (*set_fre_info) (unsigned int, unsigned int, unsigned int,
 				 bool);
   /* set SFrame Func info.  */
-  unsigned char (*set_func_info) (unsigned int, unsigned int);
+  unsigned char (*set_func_info) (unsigned int, unsigned int, unsigned int);
 };
 
-/* Generate SFrame unwind info and prepare contents for the output.
+/* Generate SFrame stack trace info and prepare contents for the output.
    outout_sframe ()  is called at the end of file.  */
 
 extern void output_sframe (segT sframe_seg);

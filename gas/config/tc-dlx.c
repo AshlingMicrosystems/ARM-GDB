@@ -1,5 +1,5 @@
 /* tc-dlx.c -- Assemble for the DLX
-   Copyright (C) 2002-2022 Free Software Foundation, Inc.
+   Copyright (C) 2002-2024 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -234,8 +234,8 @@ s_proc (int end_p)
 
       delim1 = get_symbol_name (&name);
       name = xstrdup (name);
-      *input_line_pointer = delim1;
-      SKIP_WHITESPACE_AFTER_NAME ();
+      restore_line_pointer (delim1);
+      SKIP_WHITESPACE ();
 
       if (*input_line_pointer != ',')
 	{
@@ -632,6 +632,7 @@ parse_operand (char *s, expressionS *operandp)
       /* Normal operand parsing.  */
       input_line_pointer = s;
       (void) expression (operandp);
+      resolve_register (operandp);
     }
 
   new_pos = input_line_pointer;
@@ -1046,14 +1047,14 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
     fixP->fx_no_overflow = 1;
 }
 
-const char *md_shortopts = "";
+const char md_shortopts[] = "";
 
-struct option md_longopts[] =
+const struct option md_longopts[] =
   {
     {NULL, no_argument, NULL, 0}
   };
 
-size_t md_longopts_size = sizeof (md_longopts);
+const size_t md_longopts_size = sizeof (md_longopts);
 
 int
 md_parse_option (int c     ATTRIBUTE_UNUSED,

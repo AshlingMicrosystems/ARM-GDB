@@ -1,6 +1,6 @@
 /* General Compile and inject code
 
-   Copyright (C) 2014-2023 Free Software Foundation, Inc.
+   Copyright (C) 2014-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,15 +17,15 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "defs.h"
-#include "top.h"
+#include "progspace.h"
+#include "ui.h"
 #include "ui-out.h"
 #include "command.h"
 #include "cli/cli-script.h"
 #include "cli/cli-utils.h"
 #include "cli/cli-option.h"
 #include "completer.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "compile.h"
 #include "compile-internal.h"
 #include "compile-object-load.h"
@@ -40,7 +40,7 @@
 #include "osabi.h"
 #include "gdbsupport/gdb_wait.h"
 #include "valprint.h"
-#include "gdbsupport/gdb_optional.h"
+#include <optional>
 #include "gdbsupport/gdb_unlinker.h"
 #include "gdbsupport/pathstuff.h"
 #include "gdbsupport/scoped_ignore_signal.h"
@@ -72,6 +72,19 @@ struct symbol_error
      hash table.  */
 
   char *message;
+};
+
+/* An object that maps a gdb type to a gcc type.  */
+
+struct type_map_instance
+{
+  /* The gdb type.  */
+
+  struct type *type;
+
+  /* The corresponding gcc type handle.  */
+
+  gcc_type gcc_type_handle;
 };
 
 /* Hash a type_map_instance.  */
@@ -290,14 +303,13 @@ compile_file_command (const char *args, int from_tty)
   enum compile_i_scope_types scope
     = options.raw ? COMPILE_I_RAW_SCOPE : COMPILE_I_SIMPLE_SCOPE;
 
-  args = skip_spaces (args);
+  std::string filename = extract_single_filename_arg (args);
 
   /* After processing options, check whether we have a filename.  */
-  if (args == nullptr || args[0] == '\0')
+  if (filename.empty ())
     error (_("You must provide a filename for this command."));
 
-  args = skip_spaces (args);
-  std::string abspath = gdb_abspath (args);
+  std::string abspath = gdb_abspath (filename.c_str ());
   std::string buffer = string_printf ("#include \"%s\"\n", abspath.c_str ());
   eval_compile_command (NULL, buffer.c_str (), scope, NULL);
 }
@@ -315,8 +327,8 @@ compile_file_command_completer (struct cmd_list_element *ignore,
       (tracker, &text, gdb::option::PROCESS_OPTIONS_UNKNOWN_IS_ERROR, group))
     return;
 
-  word = advance_to_filename_complete_word_point (tracker, text);
-  filename_completer (ignore, tracker, text, word);
+  word = advance_to_filename_maybe_quoted_complete_word_point (tracker, text);
+  filename_maybe_quoted_completer (ignore, tracker, text, word);
 }
 
 /* Handle the input from the 'compile code' command.  The
@@ -414,23 +426,6 @@ compile_print_command (const char *arg, int from_tty)
     }
 }
 
-/* A cleanup function to remove a directory and all its contents.  */
-
-static void
-do_rmdir (void *arg)
-{
-  const char *dir = (const char *) arg;
-  char *zap;
-  int wstat;
-
-  gdb_assert (startswith (dir, TMP_PREFIX));
-  zap = concat ("rm -rf ", dir, (char *) NULL);
-  wstat = system (zap);
-  if (wstat == -1 || !WIFEXITED (wstat) || WEXITSTATUS (wstat) != 0)
-    warning (_("Could not remove temporary directory %s"), dir);
-  XDELETEVEC (zap);
-}
-
 /* Return the name of the temporary directory to use for .o files, and
    arrange for the directory to be removed at shutdown.  */
 
@@ -452,7 +447,18 @@ get_compile_file_tempdir (void)
     perror_with_name (_("Could not make temporary directory"));
 
   tempdir_name = xstrdup (tempdir_name);
-  make_final_cleanup (do_rmdir, tempdir_name);
+  add_final_cleanup ([] ()
+    {
+      char *zap;
+      int wstat;
+
+      gdb_assert (startswith (tempdir_name, TMP_PREFIX));
+      zap = concat ("rm -rf ", tempdir_name, (char *) NULL);
+      wstat = system (zap);
+      if (wstat == -1 || !WIFEXITED (wstat) || WEXITSTATUS (wstat) != 0)
+	warning (_("Could not remove temporary directory %s"), tempdir_name);
+      XDELETEVEC (zap);
+    });
   return tempdir_name;
 }
 
@@ -481,7 +487,8 @@ get_expr_block_and_pc (CORE_ADDR *pc)
 
   if (block == NULL)
     {
-      struct symtab_and_line cursal = get_current_source_symtab_and_line ();
+      symtab_and_line cursal
+	= get_current_source_symtab_and_line (current_program_space);
 
       if (cursal.symtab)
 	block = cursal.symtab->compunit ()->blockvector ()->static_block ();
@@ -755,7 +762,7 @@ compile_to_object (struct command_line *cmd, const char *cmd_string,
 
   compile_file_names fnames = get_new_file_names ();
 
-  gdb::optional<gdb::unlinker> source_remover;
+  std::optional<gdb::unlinker> source_remover;
 
   {
     gdb_file_up src = gdb_fopen_cloexec (fnames.source_file (), "w");

@@ -1,4 +1,4 @@
-/* Copyright (C) 2021 Free Software Foundation, Inc.
+/* Copyright (C) 2021-2024 Free Software Foundation, Inc.
    Contributed by Oracle.
 
    This file is part of GNU Binutils.
@@ -36,12 +36,6 @@
 #include "memmgr.h"
 #include "cc_libcollector.h"
 #include "tsd.h"
-
-/* TprintfT(<level>,...) definitions.  Adjust per module as needed */
-#define DBG_LT0 0 // for high-level configuration, unexpected errors/warnings
-#define DBG_LT1 1 // for configuration details, warnings
-#define DBG_LT2 2
-#define DBG_LT3 3
 
 typedef unsigned long ulong_t;
 
@@ -216,15 +210,10 @@ get_collector_interface ()
 static void
 collector_module_init (CollectorInterface *col_intf)
 {
-  int nmodules = 0;
-
   ModuleInitFunc next_init = (ModuleInitFunc) dlsym (RTLD_DEFAULT, "__collector_module_init");
   if (next_init != NULL)
-    {
-      nmodules++;
-      next_init (col_intf);
-    }
-  TprintfT (DBG_LT1, "collector_module_init: %d modules\n", nmodules);
+    next_init (col_intf);
+  TprintfT (DBG_LT1, "collector_module_init: %d modules\n", next_init ? 1 : 0);
 }
 
 /*   Routines concerned with general experiment start and stop */
@@ -1163,7 +1152,7 @@ __collector_SIGCHLD_signal_handler (int sig, siginfo_t *si, void *context)
    * before the handler knows the value of mychild_pid.
    */
   if (calling_pid == mychild_pid)
-    // er_archive has exited; so restore the user handler
+    // gprofng_archive has exited; so restore the user handler
     __collector_sigaction (SIGCHLD, &original_sigchld_sigaction, NULL);
   else
     {
@@ -1280,7 +1269,7 @@ __collector_close_experiment ()
   if (project_home && archive_mode && __collector_strcmp (archive_mode, "off"))
     {
       /* construct a command to launch it */
-      char *er_archive_name = "/bin/gp-archive";
+      char *er_archive_name = "/bin/gprofng-archive";
       size_t cmdlen = CALL_UTIL (strlen)(project_home) + CALL_UTIL (strlen)(er_archive_name) + 1;
       char *command = (char*) alloca (cmdlen);
       CALL_UTIL (snprintf)(command, cmdlen, "%s%s", project_home, er_archive_name);
@@ -1350,10 +1339,9 @@ __collector_close_experiment ()
       return;
     }
 
-  struct sigaction sa;
-  CALL_UTIL (memset)(&sa, 0, sizeof (struct sigaction));
+  static struct sigaction sigaction_0 = {.sa_flags = SA_SIGINFO };
+  struct sigaction sa = sigaction_0;
   sa.sa_sigaction = __collector_SIGCHLD_signal_handler;
-  sa.sa_flags = SA_SIGINFO;
   __collector_sigaction (SIGCHLD, &sa, &original_sigchld_sigaction);
 
   /* linetrace interposition takes care of unsetting Environment variables */
@@ -1790,7 +1778,7 @@ __collector_pause ()
 }
 
 void
-__collector_pause_m (char *reason)
+__collector_pause_m (const char *reason)
 {
   hrtime_t now;
   char xreason[MAXPATHLEN];
@@ -2325,7 +2313,6 @@ ovw_write ()
     return 0;
   int fd;
   int res;
-  struct prusage usage;
   struct rusage rusage;
   hrtime_t hrt, delta;
 
@@ -2341,9 +2328,9 @@ ovw_write ()
       return ( hrt);
     }
 
-  CALL_UTIL (memset)(&usage, 0, sizeof (struct prusage));
+  static struct prusage usage_0 = { .pr_count = 1 };
+  struct prusage usage = usage_0;
   usage.pr_lwpid = getpid ();
-  usage.pr_count = 1;
   usage.pr_tstamp.tv_sec = hrt / NANOSEC;
   usage.pr_tstamp.tv_nsec = hrt % NANOSEC;
   usage.pr_create.tv_sec = starttime / NANOSEC;
@@ -2455,13 +2442,10 @@ __collector_dlog (int tflag, int level, char *format, ...)
  */
 /*------------------------------------------------------------- _exit */
 
-#define CALL_REAL(x) (*(int(*)())__real_##x)
-#define NULL_PTR(x) ( __real_##x == NULL )
-
-static void *__real__exit = NULL; /* libc only: _exit */
-static void *__real__Exit = NULL; /* libc only: _Exit */
-void _exit () __attribute__ ((weak, alias ("__collector_exit")));
-void _Exit () __attribute__ ((weak, alias ("__collector_Exit")));
+static void (*__real__exit) (int status) = NULL; /* libc only: _exit */
+static void (*__real__Exit) (int status) = NULL; /* libc only: _Exit */
+void _exit (int status) __attribute__ ((weak, alias ("__collector_exit")));
+void _Exit (int status) __attribute__ ((weak, alias ("__collector_Exit")));
 
 void
 __collector_exit (int status)

@@ -1,5 +1,5 @@
 # Support routines for LD testsuite.
-#   Copyright (C) 1994-2022 Free Software Foundation, Inc.
+#   Copyright (C) 1994-2024 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -33,27 +33,14 @@ proc at_least_gcc_version { major minor } {
 	return 0
     }
     # Filter out -Wl, options.
-    regsub -all -- "-Wl,\[^ ^\t\]+" $CC_FOR_TARGET "" cc_cmd
-    set state [remote_exec host $cc_cmd --version]
+    regsub -all -- {-Wl,[^ \t]+} $CC_FOR_TARGET {} cc_cmd
+    set prog "\"#if $major < __GNUC__ + ($minor <= __GNUC_MINOR__)\nyes\n#endif\""
+    set cmd "echo $prog | $cc_cmd -E -"
+    set state [remote_exec host [concat sh -c [list "$cmd 2>/dev/null"]]]
     if { [lindex $state 0] != 0 } {
 	return 0;
     }
-    set tmp "[lindex $state 1]\n"
-    # Look for (eg) 4.6.1 in the version output.
-    set ver_re "\[^\\.0-9\]+(\[1-9\]\[0-9\]*)\\.(\[0-9\]+)(?:\\.\[0-9\]+)?"
-    regexp $ver_re $tmp fred maj min
-    verbose "gcc version: $tmp"
-    if { ![info exists maj] || ![info exists min] } then {
-	perror "can't decipher gcc version number, fix the framework!"
-	return 0
-    }
-    verbose "major gcc version is $maj, want at least $major"
-    if { $maj == $major } then {
-	verbose "minor gcc version is $min, want at least $minor"
-	return [expr $min >= $minor]
-    } else {
-	return [expr $maj > $major]
-    }
+    return [regexp {(?x)yes} [lindex $state 1]]
 }
 
 # Extract and print the version number of ld.
@@ -109,12 +96,12 @@ proc run_host_cmd { prog command } {
 	set gccflags "$gcc_B_opt $gccflags $ld_L_opt"
 	if {![info exists gcc_ld_B_opt_tested]} {
 	    set gcc_ld_B_opt_tested 1
-	    set ld_version_message [run_host_cmd "$ld" "--version"]
+	    set ld_version_message [string trim [run_host_cmd "$ld" "--version"]]
 	    set ver "-Wl,--version"
 	    if [check_lto_available] {
 		set ver "-fno-lto $ver"
 	    }
-	    set gcc_ld_version_message [run_host_cmd "$prog" "$gccflags $ver"]
+	    set gcc_ld_version_message [string trim [run_host_cmd "$prog" "$gccflags $ver"]]
 	    if {[string first $ld_version_message $gcc_ld_version_message] < 0} {
 		perror "************************************************************************"
 		perror "Your compiler apparently ignores -B when choosing ld."
@@ -123,7 +110,7 @@ proc run_host_cmd { prog command } {
 		    perror "Hint: don't configure gcc using --with-ld (or --with-as)"
 		}
 		perror "You will not be testing the new ld in many of the following tests."
-		set gcc_ld_version [run_host_cmd "$prog" "$gccflags --print-prog-name=ld"]
+		set gcc_ld_version [string trim [run_host_cmd "$prog" "$gccflags --print-prog-name=ld"]]
 		if {![string match "" $gcc_ld_version] && ![string match "ld" $gcc_ld_version]} {
 		    perror "It seems you will be testing $gcc_ld_version instead."
 		}
@@ -136,9 +123,8 @@ proc run_host_cmd { prog command } {
     set status [remote_exec host [concat sh -c [list "$prog $gccflags $command 2>&1"]] "" "/dev/null" "ld.tmp"]
     remote_upload host "ld.tmp"
     set link_output [file_contents "ld.tmp"]
-    regsub "\n$" $link_output "" link_output
     if { [lindex $status 0] != 0 && [string match "" $link_output] } then {
-	append link_output "child process exited abnormally"
+	set link_output "child process exited abnormally"
     }
     remote_file build delete ld.tmp
     remote_file host delete ld.tmp
@@ -467,7 +453,6 @@ proc run_ld_link_tests { ldtests args } {
     global subdir
     global env
     global CC_FOR_TARGET
-    global CFLAGS_FOR_TARGET
     global runtests
     global exec_output
 
@@ -503,6 +488,11 @@ proc run_ld_link_tests { ldtests args } {
 	set maybe_failed 0
 	set ld_output ""
 
+	# Don't leave previous output around
+	if { $binfile ne "tmpdir/" } {
+	    remote_file host delete $binfile
+	}
+
 	# Add -fno-lto.  LTO should be tested explicitly by $cflags.
 	if {[check_lto_available]} {
 	    set cflags "-fno-lto $cflags"
@@ -534,7 +524,7 @@ proc run_ld_link_tests { ldtests args } {
 		set objfile "tmpdir/$fileroot.o"
 		if { [file extension $src_file] == ".c" } {
 		    set as_file "tmpdir/$fileroot.s"
-		    if ![ld_compile "$CC_FOR_TARGET -S $CFLAGS_FOR_TARGET $cflags" $srcdir/$subdir/$src_file $as_file] {
+		    if ![ld_compile "$CC_FOR_TARGET -S $cflags" $srcdir/$subdir/$src_file $as_file] {
 			set is_unsupported 1
 			break
 		    }
@@ -641,7 +631,7 @@ proc run_ld_link_tests { ldtests args } {
 		    remote_upload host "dump.out"
 
 		    if { [regexp_diff "dump.out" "$srcdir/$subdir/$dumpfile"] } then {
-			verbose "output is [file_contents "dump.out"]" 2
+			verbose -log "output is [file_contents "dump.out"]" 2
 			set failed 1
 			remote_file build delete "dump.out"
 			remote_file host delete "dump.out"
@@ -685,8 +675,6 @@ proc run_ld_link_exec_tests { ldtests args } {
     global env
     global CC_FOR_TARGET
     global CXX_FOR_TARGET
-    global CFLAGS_FOR_TARGET
-    global CXXFLAGS_FOR_TARGET
     global errcnt
     global exec_output
     global board_cflags
@@ -723,6 +711,11 @@ proc run_ld_link_exec_tests { ldtests args } {
 	set objfiles {}
 	set failed 0
 
+	# Don't leave previous output around
+	if { $binfile ne "tmpdir/" } {
+	    remote_file host delete $binfile
+	}
+
 	if { ![check_compiler_available] } {
 	    unsupported $testname
 	    continue
@@ -753,9 +746,9 @@ proc run_ld_link_exec_tests { ldtests args } {
 	    lappend objfiles $objfile
 
 	    if { [ string match "c++" $lang ] } {
-		set cmd "$CXX_FOR_TARGET -c $CXXFLAGS_FOR_TARGET $cflags"
+		set cmd "$CXX_FOR_TARGET -c $cflags"
 	    } else {
-		set cmd "$CC_FOR_TARGET -c $CFLAGS_FOR_TARGET $cflags"
+		set cmd "$CC_FOR_TARGET -c $cflags"
 	    }
 	    if ![ld_compile $cmd $srcdir/$subdir/$src_file $objfile] {
 		set failed 1
@@ -860,8 +853,6 @@ proc run_cc_link_tests { ldtests } {
     global env
     global CC_FOR_TARGET
     global CXX_FOR_TARGET
-    global CFLAGS_FOR_TARGET
-    global CXXFLAGS_FOR_TARGET
     global ar
     global exec_output
     global board_cflags
@@ -893,6 +884,11 @@ proc run_cc_link_tests { ldtests } {
 	set failed 0
 	set check_ld(terminal) 0
 	set check_ld(source) ""
+
+	# Don't leave previous output around
+	if { $binfile ne "tmpdir/" } {
+	    remote_file host delete $binfile
+	}
 
 	if { ![check_compiler_available] } {
 	    unsupported $testname
@@ -950,9 +946,9 @@ proc run_cc_link_tests { ldtests } {
 	    lappend objfiles $objfile
 
 	    if { [ string match "c++" $lang ] } {
-		set cmd "$CXX_FOR_TARGET -c $CXXFLAGS_FOR_TARGET $cflags"
+		set cmd "$CXX_FOR_TARGET -c $cflags"
 	    } else {
-		set cmd "$CC_FOR_TARGET -c $CFLAGS_FOR_TARGET $cflags"
+		set cmd "$CC_FOR_TARGET -c $cflags"
 	    }
 	    if ![ld_compile $cmd $srcdir/$subdir/$src_file $objfile] {
 		set failed 1
@@ -1072,7 +1068,7 @@ proc run_cc_link_tests { ldtests } {
 		    }
 
 		    if { [regexp_diff "dump.out" "$srcdir/$subdir/$dumpfile"] } then {
-			verbose "output is [file_contents "dump.out"]" 2
+			verbose -log "output is [file_contents "dump.out"]" 2
 			set failed 1
 			break
 		    }
@@ -1145,6 +1141,7 @@ proc uses_genelf { } {
 	 || [istarget "ft32-*-*"]
 	 || [istarget "iq2000-*-*"]
 	 || [istarget "mn10200-*-*"]
+	 || [istarget "moxie-*-moxiebox*"]
 	 || [istarget "msp430-*-*"]
 	 || [istarget "mt-*-*"]
 	 || [istarget "pj*-*-*"]
@@ -1153,6 +1150,14 @@ proc uses_genelf { } {
 	return 1
     }
     return 0
+}
+
+# Return true if target uses elf.em.
+proc uses_elf_em { } {
+    if { [is_elf_format] && ![uses_genelf] } {
+	return 1;
+    }
+    return 0;
 }
 
 proc is_underscore_target { } {

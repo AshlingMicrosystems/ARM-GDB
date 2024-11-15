@@ -1,6 +1,6 @@
 /* General window behavior.
 
-   Copyright (C) 1998-2023 Free Software Foundation, Inc.
+   Copyright (C) 1998-2024 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -28,29 +28,26 @@ struct tui_win_info;
 
 extern void tui_unhighlight_win (struct tui_win_info *);
 extern void tui_highlight_win (struct tui_win_info *);
-extern void tui_refresh_all ();
 
-/* An RAII class that suppresses output on construction (calling
-   wnoutrefresh on the existing windows), and then flushes the output
-   (via doupdate) when destroyed.  */
+/* An RAII class that calls doupdate on destruction (really the
+   destruction of the outermost instance).  This is used to prevent
+   flickering -- window implementations should only call wnoutrefresh,
+   and any time rendering is needed, an object of this type should be
+   instantiated.  */
 
-class tui_suppress_output
+class tui_batch_rendering
 {
 public:
 
-  tui_suppress_output ();
-  ~tui_suppress_output ();
+  tui_batch_rendering ();
+  ~tui_batch_rendering ();
 
-  DISABLE_COPY_AND_ASSIGN (tui_suppress_output);
+  DISABLE_COPY_AND_ASSIGN (tui_batch_rendering);
 
 private:
 
   /* Save the state of the suppression global.  */
   bool m_saved_suppress;
 };
-
-/* Call wrefresh on the given window.  However, if output is being
-   suppressed via tui_suppress_output, do not call wrefresh.  */
-extern void tui_wrefresh (WINDOW *win);
 
 #endif /* TUI_TUI_WINGENERAL_H */

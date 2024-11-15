@@ -1,5 +1,5 @@
 /* Low level interface to Windows debugging, for gdbserver.
-   Copyright (C) 2006-2023 Free Software Foundation, Inc.
+   Copyright (C) 2006-2024 Free Software Foundation, Inc.
 
    Contributed by Leo Zayas.  Based on "win32-nat.c" from GDB.
 
@@ -18,7 +18,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "server.h"
 #include "regcache.h"
 #include "gdbsupport/fileio.h"
 #include "mem-break.h"
@@ -69,14 +68,6 @@ const struct target_desc *wow64_win32_tdesc;
 #endif
 
 #define NUM_REGS (the_low_target.num_regs ())
-
-/* Get the thread ID from the current selected inferior (the current
-   thread).  */
-static ptid_t
-current_thread_ptid (void)
-{
-  return current_ptid;
-}
 
 /* The current debug event from WaitForDebugEvent.  */
 static ptid_t
@@ -175,7 +166,7 @@ child_add_thread (DWORD pid, DWORD tid, HANDLE h, void *tlb)
 #endif
   th = new windows_thread_info (tid, h, base);
 
-  add_thread (ptid, th);
+  find_process_pid (pid)->add_thread (ptid, th);
 
   if (the_low_target.thread_added != NULL)
     (*the_low_target.thread_added) (th);
@@ -189,7 +180,7 @@ delete_thread_info (thread_info *thread)
 {
   windows_thread_info *th = (windows_thread_info *) thread_target_data (thread);
 
-  remove_thread (thread);
+  thread->process ()->remove_thread (thread);
   delete th;
 }
 
@@ -324,8 +315,7 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
   if (!IsWow64Process (proch, &wow64))
     {
       DWORD err = GetLastError ();
-      error ("Check if WOW64 process failed (error %d): %s\n",
-	     (int) err, strwinerror (err));
+      throw_winerror_with_name ("Check if WOW64 process failed", err);
     }
   windows_process.wow64_process = wow64;
 
@@ -454,7 +444,7 @@ child_fetch_inferior_registers (struct regcache *regcache, int r)
 {
   int regno;
   windows_thread_info *th
-    = windows_process.thread_rec (current_thread_ptid (),
+    = windows_process.thread_rec (current_thread->id,
 				  INVALIDATE_CONTEXT);
   if (r == -1 || r > NUM_REGS)
     child_fetch_inferior_registers (regcache, NUM_REGS);
@@ -470,7 +460,7 @@ child_store_inferior_registers (struct regcache *regcache, int r)
 {
   int regno;
   windows_thread_info *th
-    = windows_process.thread_rec (current_thread_ptid (),
+    = windows_process.thread_rec (current_thread->id,
 				  INVALIDATE_CONTEXT);
   if (r == -1 || r == 0 || r > NUM_REGS)
     child_store_inferior_registers (regcache, NUM_REGS);
@@ -503,7 +493,7 @@ create_process (const char *program, char *args,
 			/* current directory */
 			(inferior_cwd.empty ()
 			 ? NULL
-			 : gdb_tilde_expand (inferior_cwd.c_str ()).c_str()),
+			 : gdb_tilde_expand (inferior_cwd).c_str()),
 			get_client_state ().disable_randomization,
 			&si,               /* start info */
 			pi);               /* proc info */
@@ -579,8 +569,9 @@ win32_process_target::create_inferior (const char *program,
 
   if (!ret)
     {
-      error ("Error creating process \"%s %s\", (error %d): %s\n",
-	     program, args, (int) err, strwinerror (err));
+      std::string msg = string_printf (_("Error creating process \"%s %s\""),
+				       program, args);
+      throw_winerror_with_name (msg.c_str (), err);
     }
   else
     {
@@ -627,8 +618,7 @@ win32_process_target::attach (unsigned long pid)
     }
 
   err = GetLastError ();
-  error ("Attach to process failed (error %d): %s\n",
-	 (int) err, strwinerror (err));
+  throw_winerror_with_name ("Attach to process failed", err);
 }
 
 /* See nat/windows-nat.h.  */
@@ -735,9 +725,9 @@ win32_process_target::detach (process_info *process)
     return -1;
 
   DebugSetProcessKillOnExit (FALSE);
+  win32_clear_inferiors ();
   remove_process (process);
 
-  win32_clear_inferiors ();
   return 0;
 }
 
@@ -975,7 +965,7 @@ maybe_adjust_pc ()
   child_fetch_inferior_registers (regcache, -1);
 
   windows_thread_info *th
-    = windows_process.thread_rec (current_thread_ptid (),
+    = windows_process.thread_rec (current_thread->id,
 				  DONT_INVALIDATE_CONTEXT);
   th->stopped_at_software_breakpoint = false;
 
@@ -1019,7 +1009,7 @@ get_child_debug_event (DWORD *continue_status,
 
   windows_process.attaching = 0;
   {
-    gdb::optional<pending_stop> stop
+    std::optional<pending_stop> stop
       = windows_process.fetch_pending_stop (debug_threads);
     if (stop.has_value ())
       {
@@ -1039,7 +1029,7 @@ get_child_debug_event (DWORD *continue_status,
 
 	if (e == ERROR_PIPE_NOT_CONNECTED)
 	  {
-	    /* This will happen if the loader fails to succesfully
+	    /* This will happen if the loader fails to successfully
 	       load the application, e.g., if the main executable
 	       tries to pull in a non-existing export from a
 	       DLL.  */
@@ -1238,7 +1228,7 @@ win32_process_target::wait (ptid_t ptid, target_waitstatus *ourstatus,
 	default:
 	  OUTMSG (("Ignoring unknown internal event, %d\n",
 		  ourstatus->kind ()));
-	  /* fall-through */
+	  [[fallthrough]];
 	case TARGET_WAITKIND_SPURIOUS:
 	  /* do nothing, just continue */
 	  child_continue (continue_status,
@@ -1398,7 +1388,7 @@ bool
 win32_process_target::stopped_by_sw_breakpoint ()
 {
   windows_thread_info *th
-    = windows_process.thread_rec (current_thread_ptid (),
+    = windows_process.thread_rec (current_thread->id,
 				  DONT_INVALIDATE_CONTEXT);
   return th == nullptr ? false : th->stopped_at_software_breakpoint;
 }
@@ -1425,7 +1415,7 @@ const char *
 win32_process_target::thread_name (ptid_t thread)
 {
   windows_thread_info *th
-    = windows_process.thread_rec (current_thread_ptid (),
+    = windows_process.thread_rec (current_thread->id,
 				  DONT_INVALIDATE_CONTEXT);
   return th->thread_name ();
 }

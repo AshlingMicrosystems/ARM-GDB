@@ -1,5 +1,12 @@
-# Copyright (C) 2023 Free Software Foundation, Inc.
+<<<<<<<< HEAD:sim/mn10300/Makefile.in
+#    Makefile template for Configure for the mn10300 sim library.
+#    Copyright (C) 1996-2023 Free Software Foundation, Inc.
+#    Written by Cygnus Support.
+# 
+========
+# Copyright (C) 2023-2024 Free Software Foundation, Inc.
 
+>>>>>>>> 75e11412937864f1f3d1a40820f5eabda6aee1dc:gdb/testsuite/gdb.rust/rust-start.exp
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 3 of the License, or
@@ -16,12 +23,12 @@
 # Test "start" for Rust.
 
 load_lib rust-support.exp
-if {[skip_rust_tests]} {
-    return
-}
+require allow_rust_tests
+require {can_compile rust}
+
 # This testcase verifies the behavior of the `start' command, which
 # does not work when we use the gdb stub...
-require use_gdb_stub 0
+require !use_gdb_stub
 
 standard_testfile simple.rs
 if {[prepare_for_testing "failed to prepare" $testfile $srcfile {debug rust}]} {
