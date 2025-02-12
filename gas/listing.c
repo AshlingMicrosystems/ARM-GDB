@@ -1,5 +1,5 @@
 /* listing.c - maintain assembly listings
-   Copyright (C) 1991-2024 Free Software Foundation, Inc.
+   Copyright (C) 1991-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -1152,7 +1152,7 @@ debugging_pseudo (list_info_type *list ATTRIBUTE_UNUSED, const char *line)
   in_debug = false;
 #endif
 
-  while (ISSPACE (*line))
+  while (is_whitespace (*line))
     line++;
 
   if (*line != '.')

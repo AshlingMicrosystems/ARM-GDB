@@ -1,5 +1,5 @@
 /* tc-arm.c -- Assemble for the ARM
-   Copyright (C) 1994-2024 Free Software Foundation, Inc.
+   Copyright (C) 1994-2025 Free Software Foundation, Inc.
    Contributed by Richard Earnshaw (rwe@pegasus.esprit.ec.org)
 	Modified by David Taylor (dtaylor@armltd.co.uk)
 	Cirrus coprocessor mods by Aldy Hernandez (aldyh@redhat.com)
@@ -878,6 +878,8 @@ struct asm_opcode
 
 #define T_OPCODE_BRANCH 0xe000
 
+#define T_OPCODE_STMFD  0xe9000000
+
 #define THUMB_SIZE	2	/* Size of thumb instruction.  */
 #define THUMB_PP_PC_LR 0x0100
 #define THUMB_LOAD_BIT 0x0800
@@ -1079,7 +1081,7 @@ const char FLT_CHARS[] = "rRsSfFdDxXeEpPHh";
 
 /* Separator character handling.  */
 
-#define skip_whitespace(str)  do { if (*(str) == ' ') ++(str); } while (0)
+#define skip_whitespace(str)  do { if (is_whitespace (*(str))) ++(str); } while (0)
 
 enum fp_16bit_format
 {
@@ -1497,26 +1499,19 @@ parse_neon_type (struct neon_type *type, char **str)
 	  goto done;
 	case 'b':
 	  thistype = NT_bfloat;
-	  switch (TOLOWER (*(++ptr)))
+	  if (TOLOWER (*(++ptr)) != 'f')
 	    {
-	    case 'f':
-	      ptr += 1;
-	      thissize = strtoul (ptr, &ptr, 10);
-	      if (thissize != 16)
-		{
-		  as_bad (_("bad size %d in type specifier"), thissize);
-		  return FAIL;
-		}
-	      goto done;
-	    case '0': case '1': case '2': case '3': case '4':
-	    case '5': case '6': case '7': case '8': case '9':
-	    case ' ': case '.':
 	      as_bad (_("unexpected type character `b' -- did you mean `bf'?"));
 	      return FAIL;
-	    default:
-	      break;
 	    }
-	  break;
+	  ptr += 1;
+	  thissize = strtoul (ptr, &ptr, 10);
+	  if (thissize != 16)
+	    {
+	      as_bad (_("bad size %d in type specifier"), thissize);
+	      return FAIL;
+	    }
+	  goto done;
 	default:
 	  as_bad (_("unexpected character `%c' in type specifier"), *ptr);
 	  return FAIL;
@@ -5053,7 +5048,8 @@ set_fp16_format (int dummy ATTRIBUTE_UNUSED)
   new_format = ARM_FP16_FORMAT_DEFAULT;
 
   name = input_line_pointer;
-  while (*input_line_pointer && !ISSPACE (*input_line_pointer))
+  while (!is_end_of_stmt (*input_line_pointer)
+	 && !is_whitespace (*input_line_pointer))
     input_line_pointer++;
 
   saved_char = *input_line_pointer;
@@ -5364,7 +5360,7 @@ parse_qfloat_immediate (char **ccp, int *immed)
     return FAIL;
   else
     {
-      for (; *fpnum != '\0' && *fpnum != ' ' && *fpnum != '\n'; fpnum++)
+      for (; *fpnum != '\0' && !is_whitespace (*fpnum) && *fpnum != '\n'; fpnum++)
 	if (*fpnum == '.' || *fpnum == 'e' || *fpnum == 'E')
 	  {
 	    found_fpchar = 1;
@@ -12352,6 +12348,8 @@ encode_thumb2_multi (bool do_io, int base, unsigned mask,
     inst.instruction |= base << 16;
 }
 
+static void do_t_push_pop (void);
+
 static void
 do_t_ldmstm (void)
 {
@@ -12367,20 +12365,73 @@ do_t_ldmstm (void)
       unsigned mask;
 
       narrow = false;
-      /* See if we can use a 16-bit instruction.  */
-      if (inst.instruction < 0xffff /* not ldmdb/stmdb */
-	  && inst.size_req != 4
-	  && !(inst.operands[1].imm & ~0xff))
+      /* Try to convert ldm/stm to a 16-bit instruction.  */
+      /* First, handle SP as the base.  */
+      if (inst.operands[0].reg == REG_SP)
 	{
-	  mask = 1 << inst.operands[0].reg;
-
-	  if (inst.operands[0].reg <= 7)
+	  /* Try converting to push/pop.  */
+	  if (inst.operands[0].writeback
+	      && (inst.instruction == T_OPCODE_STMFD  /* Push.  */
+		  || inst.instruction == T_MNEM_ldmia)) /* Pop.  */
 	    {
+	      inst.instruction = (inst.instruction == T_MNEM_ldmia
+				  ? T_MNEM_pop
+				  : T_MNEM_push);
+	      inst.operands[0] = inst.operands[1];
+	      do_t_push_pop ();
+	      return;
+	    }
+	  /* For single registers try a simple ldr/str.  */
+	  if (!inst.operands[0].writeback
+	      && (inst.instruction == T_MNEM_stmia
+		  || inst.instruction == T_MNEM_ldmia)
+	      && (inst.operands[1].imm & (inst.operands[1].imm - 1)) == 0)
+	    {
+	      unsigned long opcode = T_MNEM_str_sp;
+	      if (inst.instruction == T_MNEM_ldmia)
+		opcode = T_MNEM_ldr_sp;
+	      inst.instruction = THUMB_OP16 (opcode);
+	      inst.instruction |= ((ffs (inst.operands[1].imm) - 1) << 8);
+	      narrow = true;
+	    }
+	}
+      /* For ldmia/stmia with all low registers we can try 16-bit
+	 encodings.  */
+      else if (inst.size_req != 4
+	       && (inst.instruction == T_MNEM_ldmia
+		   || inst.instruction == T_MNEM_stmia)
+	       && inst.operands[0].reg <= 7
+	       && !(inst.operands[1].imm & ~0xff))
+	{
+	  /* For single registers try a simple ldr/str.  */
+	  if (!inst.operands[0].writeback
+	      && (inst.operands[1].imm & (inst.operands[1].imm - 1)) == 0)
+	    {
+	      unsigned long opcode = T_MNEM_ldr;
+	      if (inst.instruction == T_MNEM_stmia)
+		opcode = T_MNEM_str;
+
+	      inst.instruction = THUMB_OP16 (opcode);
+	      inst.instruction |= inst.operands[0].reg << 3;
+	      inst.instruction |= (ffs (inst.operands[1].imm) - 1);
+	      narrow = true;
+	    }
+	  /* Finally, try a 16-bit ldm/stm.  */
+	  else
+	    {
+	      mask = 1 << inst.operands[0].reg;
+
+	      /* STMIA must have writeback; LDMIA must have writeback
+		 if and only if the base register is not in the
+		 transfer list.  */
 	      if (inst.instruction == T_MNEM_stmia
 		  ? inst.operands[0].writeback
 		  : (inst.operands[0].writeback
 		     == !(inst.operands[1].imm & mask)))
 		{
+		  /* For STMIA, if the base register is in the
+		     transfer list, the value stored is UNKOWN if it
+		     is not the first register in the list.  */
 		  if (inst.instruction == T_MNEM_stmia
 		      && (inst.operands[1].imm & mask)
 		      && (inst.operands[1].imm & (mask - 1)))
@@ -12390,50 +12441,6 @@ do_t_ldmstm (void)
 		  inst.instruction = THUMB_OP16 (inst.instruction);
 		  inst.instruction |= inst.operands[0].reg << 8;
 		  inst.instruction |= inst.operands[1].imm;
-		  narrow = true;
-		}
-	      else if ((inst.operands[1].imm & (inst.operands[1].imm-1)) == 0)
-		{
-		  /* This means 1 register in reg list one of 3 situations:
-		     1. Instruction is stmia, but without writeback.
-		     2. lmdia without writeback, but with Rn not in
-			reglist.
-		     3. ldmia with writeback, but with Rn in reglist.
-		     Case 3 is UNPREDICTABLE behaviour, so we handle
-		     case 1 and 2 which can be converted into a 16-bit
-		     str or ldr. The SP cases are handled below.  */
-		  unsigned long opcode;
-		  /* First, record an error for Case 3.  */
-		  if (inst.operands[1].imm & mask
-		      && inst.operands[0].writeback)
-		    inst.error =
-			_("having the base register in the register list when "
-			  "using write back is UNPREDICTABLE");
-
-		  opcode = (inst.instruction == T_MNEM_stmia ? T_MNEM_str
-							     : T_MNEM_ldr);
-		  inst.instruction = THUMB_OP16 (opcode);
-		  inst.instruction |= inst.operands[0].reg << 3;
-		  inst.instruction |= (ffs (inst.operands[1].imm)-1);
-		  narrow = true;
-		}
-	    }
-	  else if (inst.operands[0] .reg == REG_SP)
-	    {
-	      if (inst.operands[0].writeback)
-		{
-		  inst.instruction =
-			THUMB_OP16 (inst.instruction == T_MNEM_stmia
-				    ? T_MNEM_push : T_MNEM_pop);
-		  inst.instruction |= inst.operands[1].imm;
-		  narrow = true;
-		}
-	      else if ((inst.operands[1].imm & (inst.operands[1].imm-1)) == 0)
-		{
-		  inst.instruction =
-			THUMB_OP16 (inst.instruction == T_MNEM_stmia
-				    ? T_MNEM_str_sp : T_MNEM_ldr_sp);
-		  inst.instruction |= ((ffs (inst.operands[1].imm)-1) << 8);
 		  narrow = true;
 		}
 	    }
@@ -22437,7 +22444,7 @@ opcode_lookup (char **str)
   /* Scan up to the end of the mnemonic, which must end in white space,
      '.' (in unified mode, or for Neon/VFP instructions), or end of string.  */
   for (base = end = *str; *end != '\0'; end++)
-    if (*end == ' ' || *end == '.')
+    if (is_whitespace (*end) || *end == '.')
       break;
 
   if (end == base)
@@ -22468,7 +22475,7 @@ opcode_lookup (char **str)
 	  if (parse_neon_type (&inst.vectype, str) == FAIL)
 	    return NULL;
 	}
-      else if (end[offset] != '\0' && end[offset] != ' ')
+      else if (end[offset] != '\0' && !is_whitespace (end[offset]))
 	return NULL;
     }
   else
@@ -23855,6 +23862,14 @@ static const struct asm_psr v7m_psrs[] =
   {"basepri_max",  0x12}, {"BASEPRI_MAX",  0x12},
   {"faultmask",	   0x13}, {"FAULTMASK",	   0x13},
   {"control",	   0x14}, {"CONTROL",	   0x14},
+  {"pac_key_p_0",  0x20}, {"PAC_KEY_P_0",  0x20},
+  {"pac_key_p_1",  0x21}, {"PAC_KEY_P_1",  0x21},
+  {"pac_key_p_2",  0x22}, {"PAC_KEY_P_2",  0x22},
+  {"pac_key_p_3",  0x23}, {"PAC_KEY_P_3",  0x23},
+  {"pac_key_u_0",  0x24}, {"PAC_KEY_U_0",  0x24},
+  {"pac_key_u_1",  0x25}, {"PAC_KEY_U_1",  0x25},
+  {"pac_key_u_2",  0x26}, {"PAC_KEY_U_2",  0x26},
+  {"pac_key_u_3",  0x27}, {"PAC_KEY_U_3",  0x27},
   {"msp_ns",	   0x88}, {"MSP_NS",	   0x88},
   {"psp_ns",	   0x89}, {"PSP_NS",	   0x89},
   {"msplim_ns",	   0x8a}, {"MSPLIM_NS",	   0x8a},
@@ -23863,7 +23878,15 @@ static const struct asm_psr v7m_psrs[] =
   {"basepri_ns",   0x91}, {"BASEPRI_NS",   0x91},
   {"faultmask_ns", 0x93}, {"FAULTMASK_NS", 0x93},
   {"control_ns",   0x94}, {"CONTROL_NS",   0x94},
-  {"sp_ns",	   0x98}, {"SP_NS",	   0x98 }
+  {"sp_ns",	   0x98}, {"SP_NS",	   0x98},
+  {"pac_key_p_0_ns",  0xa0}, {"PAC_KEY_P_0_NS",  0xa0},
+  {"pac_key_p_1_ns",  0xa1}, {"PAC_KEY_P_1_NS",  0xa1},
+  {"pac_key_p_2_ns",  0xa2}, {"PAC_KEY_P_2_NS",  0xa2},
+  {"pac_key_p_3_ns",  0xa3}, {"PAC_KEY_P_3_NS",  0xa3},
+  {"pac_key_u_0_ns",  0xa4}, {"PAC_KEY_U_0_NS",  0xa4},
+  {"pac_key_u_1_ns",  0xa5}, {"PAC_KEY_U_1_NS",  0xa5},
+  {"pac_key_u_2_ns",  0xa6}, {"PAC_KEY_U_2_NS",  0xa6},
+  {"pac_key_u_3_ns",  0xa7}, {"PAC_KEY_U_3_NS",  0xa7},
 };
 
 /* Table of all shift-in-operand names.	 */
@@ -29329,9 +29352,8 @@ tc_gen_reloc (asection *section, fixS *fixp)
   arelent * reloc;
   bfd_reloc_code_real_type code;
 
-  reloc = XNEW (arelent);
-
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
 

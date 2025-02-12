@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef OBSERVABLE_H
-#define OBSERVABLE_H
+#ifndef GDB_OBSERVABLE_H
+#define GDB_OBSERVABLE_H
 
 #include "gdbsupport/observable.h"
 #include "target/waitstatus.h"
@@ -104,7 +104,8 @@ extern observable<solib &/* solib */> solib_loaded;
 /* The shared library SOLIB has been unloaded from program space PSPACE.
    Note  when gdb calls this observer, the library's symbols have not
    been unloaded yet, and thus are still available.  */
-extern observable<program_space *, const solib &/* solib */> solib_unloaded;
+extern observable<program_space *, const solib &/* solib */,
+		  bool /* still_in_use */> solib_unloaded;
 
 /* The symbol file specified by OBJFILE has been loaded.  */
 extern observable<struct objfile */* objfile */> new_objfile;
@@ -259,4 +260,4 @@ extern observable<bool /* enabled */> tui_enabled;
 
 } /* namespace gdb */
 
-#endif /* OBSERVABLE_H */
+#endif /* GDB_OBSERVABLE_H */

@@ -499,7 +499,7 @@ mips_target::low_new_fork (process_info *parent,
 void
 mips_target::low_prepare_to_resume (lwp_info *lwp)
 {
-  ptid_t ptid = get_lwp_thread (lwp)->id;
+  ptid_t ptid = lwp->thread->id;
   struct process_info *proc = find_process_pid (ptid.pid ());
   struct arch_process_info *priv = proc->priv->arch_private;
 
@@ -623,7 +623,7 @@ mips_target::low_remove_point (raw_bkpt_type type, CORE_ADDR addr,
 				  &priv->watch_mirror);
 
   /* Only update the threads of this process.  */
-  proc->for_each_thread (pid, update_watch_registers_callback);
+  proc->for_each_thread (update_watch_registers_callback);
 
   return 0;
 }

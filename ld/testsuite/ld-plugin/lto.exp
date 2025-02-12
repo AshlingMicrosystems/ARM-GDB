@@ -1,5 +1,5 @@
 # Expect script for ld-plugin LTO tests
-#   Copyright (C) 2011-2024 Free Software Foundation, Inc.
+#   Copyright (C) 2011-2025 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -72,6 +72,15 @@ set lto_link_tests [list \
   [list "Build liblto-3.a" \
    "" "-flto $lto_fat" \
    {lto-3b.c} {} "liblto-3.a"] \
+  [list "Compile 4a" \
+   "" "-flto $lto_fat" \
+   {lto-4a.c} {} ""] \
+  [list "Compile 4b" \
+   "" "-O2" \
+   {lto-4b.c} {} ""] \
+  [list "Compile 4c" \
+   "" "-O2" \
+   {lto-4c.c} {} ""] \
   [list "Compile 5a" \
    "" "-flto $lto_fat" \
    {lto-5a.c} {} ""] \
@@ -84,6 +93,12 @@ set lto_link_tests [list \
   [list "Compile 9" \
    "" "-O2 -finline -flto" \
    {lto-9.cc} {} "" "c++"] \
+  [list "Compile 10a" \
+   "" "-O2" \
+   {lto-10a.c} {} ""] \
+  [list "Compile 10b" \
+   "" "-O2 -flto $lto_fat" \
+   {lto-10b.c} {} ""] \
   [list "Compile 11a" \
    "" "-O -flto" \
    {lto-11a.c} {} ""] \
@@ -711,9 +726,29 @@ set lto_run_tests [list \
   [list "LTO 3c" \
    "-O2 -flto -fuse-linker-plugin tmpdir/lto-3a.o tmpdir/lto-3c.o -Wl,--whole-archive tmpdir/liblto-3.a -Wl,--no-whole-archive tmpdir/liblto-3.a" "" \
    {dummy.c} "lto-3d.exe" "lto-3.out" "" "c"] \
+  [list "LTO 4a" \
+   "-O2 -flto -fuse-linker-plugin \
+    -Wl,--no-warn-execstack,--no-error-execstack \
+    tmpdir/lto-4r-a.o" "" \
+   {dummy.c} "lto-4a.exe" "lto-4.out" "" "c"] \
+  [list "LTO 4c" \
+   "-O2 -flto -fuse-linker-plugin \
+    -Wl,--no-warn-execstack,--no-error-execstack \
+    tmpdir/lto-4r-c.o" "" \
+   {dummy.c} "lto-4c.exe" "lto-4.out" "" "c"] \
+  [list "LTO 4d" \
+   "-O2 -flto -fuse-linker-plugin \
+    -Wl,--no-warn-execstack,--no-error-execstack \
+    tmpdir/lto-4r-d.o" "" \
+   {dummy.c} "lto-4d.exe" "lto-4.out" "" "c"] \
   [list "LTO 5" \
    "-O2 -flto -fuse-linker-plugin tmpdir/lto-5.o" "" \
    {dummy.c} "lto-5.exe" "lto-5.out" "" "c"] \
+  [list "LTO 10" \
+   "-O2 -flto -fuse-linker-plugin \
+    -Wl,--no-warn-execstack,--no-error-execstack \
+    tmpdir/lto-10.o" "" \
+   {dummy.c} "lto-10.exe" "lto-10.out" "" "c"] \
   [list "LTO 11" \
    "-O -flto -fuse-linker-plugin tmpdir/liblto-11.a" "" \
    {dummy.c} "lto-11.exe" "lto-11.out" "" "c"] \
@@ -905,10 +940,8 @@ run_cc_link_tests $lto_compile_elf_tests
 #
 #    Update LDPT_REGISTER_CLAIM_FILE_HOOK_V2 linker plugin hook
 #
-set exec_output [run_host_cmd "$CC_FOR_TARGET" \
-			      "-O2 -fcommon -flto -o tmpdir/common-2 \
-			       tmpdir/common-2a.o tmpdir/libcommon-2.a \
-			       tmpdir/libcommon-2.a"]
+ld_link "$CC_FOR_TARGET" pr32083.exe "-O2 -fcommon -flto -o tmpdir/common-2 \
+    tmpdir/common-2a.o tmpdir/libcommon-2.a tmpdir/libcommon-2.a"
 if [string match "" $exec_output] then {
     pass "PR ld/32083"
 } elseif { [ regexp "lto1: fatal error: multiple prevailing defs for 'func'" $exec_output ] } {
@@ -919,23 +952,25 @@ if [string match "" $exec_output] then {
 
 # Restrict these to ELF targets that support shared libs and PIC.
 if { [is_elf_format] && [check_lto_shared_available] } {
+    global exec_output
+
     run_cc_link_tests $lto_link_elf_tests
     set testname "PR ld/15146 (2)"
-    set exec_output [run_host_cmd "$CC_FOR_TARGET" "-O2 -flto -fuse-linker-plugin -Wl,-rpath-link,. -Wl,--no-copy-dt-needed-entries -Wl,--no-as-needed tmpdir/pr15146d.o tmpdir/pr15146c.so"]
+    ld_link "$CC_FOR_TARGET" pr15146-2.exe "-O2 -flto -fuse-linker-plugin -Wl,-rpath-link,. -Wl,--no-copy-dt-needed-entries -Wl,--no-as-needed tmpdir/pr15146d.o tmpdir/pr15146c.so"
     if { [ regexp "undefined reference to symbol '\\.?xxx'" $exec_output ] } {
 	pass $testname
     } {
 	fail $testname
     }
     set testname "PR ld/16746 (3)"
-    set exec_output [run_host_cmd "$CC_FOR_TARGET" "-O2 -flto -fuse-linker-plugin tmpdir/pr16746b.o tmpdir/pr16746d.o"]
+    ld_link "$CC_FOR_TARGET" pr16746-3.exe "-O2 -flto -fuse-linker-plugin tmpdir/pr16746b.o tmpdir/pr16746d.o"
     if { [ regexp "warning: \\.?foobar" $exec_output ] && ![ regexp "symbol from plugin" $exec_output ] } {
 	pass $testname
     } {
 	fail $testname
     }
     set testname "PR ld/16746 (4)"
-    set exec_output [run_host_cmd "$CC_FOR_TARGET" "-O2 -flto -fuse-linker-plugin tmpdir/pr16746d.o tmpdir/pr16746b.o"]
+    ld_link "$CC_FOR_TARGET" pr16746-4.exe "-O2 -flto -fuse-linker-plugin tmpdir/pr16746d.o tmpdir/pr16746b.o"
     if { [ regexp "warning: \\.?foobar" $exec_output ] && ![ regexp "symbol from plugin" $exec_output ] } {
 	pass $testname
     } {
@@ -957,10 +992,11 @@ run_cc_link_tests [list \
     ] \
 ]
 
+set board_flags [get_board_flags]
 set exec_output [run_host_cmd "sh" \
 			      "-c \"ulimit -n 20; \
 			      $CC_FOR_TARGET $gcc_B_opt $CFLAGS_FOR_TARGET \
-			      $ld_L_opt -o tmpdir/pr28138 \
+			      $board_flags $ld_L_opt -o tmpdir/pr28138 \
 			      tmpdir/pr28138.o tmpdir/pr28138.a\""]
 set exec_output [prune_warnings $exec_output]
 if [string match "" $exec_output] then {
@@ -978,6 +1014,15 @@ if [string match "" $exec_output] then {
     fail "PR ld/28138 (build only)"
 }
 
+set testname "Build liblto-4.a"
+remote_file host delete "tmpdir/liblto-4.a"
+set catch_output [run_host_cmd "$ar" "rc tmpdir/liblto-4.a tmpdir/lto-4a.o tmpdir/lto-4b.o tmpdir/lto-4c.o"]
+if {![string match "" $catch_output]} {
+    unresolved $testname
+    restore_notify
+    return
+}
+
 set testname "Build liblto-11.a"
 remote_file host delete "tmpdir/liblto-11.a"
 set catch_output [run_host_cmd "$ar" "rc $plug_opt tmpdir/liblto-11.a tmpdir/lto-11a.o tmpdir/lto-11b.o tmpdir/lto-11c.o"]
@@ -991,14 +1036,15 @@ if { [at_least_gcc_version 4 7] } {
     # Check expected LTO linker errors.
     # Since the asm symbol name hack in pr12365b.c doesn't work on all
     # targets, run PR ld/12365 tests only for known targets.
+    global exec_output
+
     if { ([istarget "i?86-*-elf*"]
 	   || [istarget "i?86-*-linux*"]
 	   || [istarget "i?86-*-gnu*"]
 	   || [istarget "x86_64-*-linux*"]
 	   || [istarget "amd64-*-linux*"]) } {
 	set testname "PR ld/12365"
-	set exec_output [run_host_cmd "$CC_FOR_TARGET" "-O2 -flto -flto-partition=none -fuse-linker-plugin -o tmpdir/pr12365 tmpdir/pr12365a.o tmpdir/pr12365b.o tmpdir/pr12365c.o"]
-	set exec_output [prune_warnings $exec_output]
+	ld_link "$CC_FOR_TARGET" pr12365.exe "-O2 -flto -flto-partition=none -fuse-linker-plugin -o tmpdir/pr12365 tmpdir/pr12365a.o tmpdir/pr12365b.o tmpdir/pr12365c.o"
 	if { [ regexp "undefined reference to `my_bcopy'" $exec_output ] } {
 	    # Linker should catch the reference to undefined `my_bcopy'
 	    # error caused by a GCC bug.
@@ -1045,7 +1091,7 @@ if { [at_least_gcc_version 4 7] } {
 	]
     }
     set testname "PR ld/12942 (3)"
-    set exec_output [run_host_cmd "$CXX_FOR_TARGET" "-O2 -flto -fuse-linker-plugin tmpdir/pr12942b.o tmpdir/pr12942a.o"]
+    ld_link "$CXX_FOR_TARGET" pr12942-3.exe "-O2 -flto -fuse-linker-plugin tmpdir/pr12942b.o tmpdir/pr12942a.o"
     if { [ regexp "undefined reference to `\\.?link_error\\(\\)'" $exec_output ] } {
         pass $testname
     } {
@@ -1089,8 +1135,30 @@ if { [at_least_gcc_version 4 7] } {
 # Run "ld -r" to generate inputs for complex LTO tests.
 run_dump_test "lto-3r"
 remote_exec host "mv" "tmpdir/dump tmpdir/lto-3.o"
+run_dump_test "lto-4r-a"
+remote_exec host "mv" "tmpdir/dump tmpdir/lto-4r-a.o"
+run_dump_test "lto-4r-b"
+remote_exec host "mv" "tmpdir/dump tmpdir/lto-4r-b.o"
+run_dump_test "lto-4r-c"
+remote_exec host "mv" "tmpdir/dump tmpdir/lto-4r-c.o"
+run_dump_test "lto-4r-d"
+remote_exec host "mv" "tmpdir/dump tmpdir/lto-4r-d.o"
 run_dump_test "lto-5r"
 remote_exec host "mv" "tmpdir/dump tmpdir/lto-5.o"
+run_dump_test "lto-10r"
+remote_exec host "mv" "tmpdir/dump tmpdir/lto-10.o"
+set testname "nm mixed object"
+set lto_plugin [string trim [run_host_cmd "$CC_FOR_TARGET" "-print-prog-name=liblto_plugin.so"]]
+if { [ regexp "liblto_plugin.so" $lto_plugin ] } {
+    set exec_output [run_host_cmd "$NM" "--plugin $lto_plugin tmpdir/lto-10.o"]
+    if { [ regexp "(D|T) main" $exec_output ] } {
+	pass $testname
+    } else {
+	fail $testname
+    }
+} else {
+    fail $testname
+}
 
 run_cc_link_tests $lto_link_symbol_tests
 
@@ -1138,9 +1206,10 @@ if { [is_elf_format] && [check_lto_shared_available] } {
 
 proc pr20103 {cflags libs} {
     global CC_FOR_TARGET
+    global exec_output
 
     set testname "PR ld/20103 ($cflags $libs)"
-    set exec_output [run_host_cmd "$CC_FOR_TARGET" "$cflags $libs"]
+    ld_link "$CC_FOR_TARGET" pr20103.exe "$cflags $libs"
     # NB: Starting from GCC 4.9, -flto is optional for final link.
     if { [ regexp "fatpr20103" "$libs" ] \
 	 && ([regexp " -flto" "$cflags"] \

@@ -21,6 +21,10 @@ imply zacas
 imply a
 
 imply xsfvcp
+imply xsfvqmaccqoq
+imply xsfvqmaccdod
+imply xsfvfnrclipxfqf
+
 imply v
 imply zvfh
 imply zvfhmin
@@ -48,6 +52,10 @@ imply zcd
 imply zcf
 imply zcmp
 imply zcmop
+imply zcmt
+
+imply zicfilp
+imply zicfiss
 
 imply shcounterenw
 imply shgatpa
@@ -90,6 +98,8 @@ imply smcsrind
 imply smcntrpmf
 imply smstateen
 imply smepmp
+imply smdbltrp
+
 imply ssaia
 imply sscsrind
 imply sscofpmf
@@ -99,6 +109,7 @@ imply sstc
 imply sstvala
 imply sstvecd
 imply ssu64xl
+imply ssdbltrp
 
 imply svade
 imply svadu

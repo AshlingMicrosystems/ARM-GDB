@@ -1750,7 +1750,7 @@ info_frame_command_core (const frame_info_ptr &fi, bool selected_frame_p)
 	  /* Find out the location of the saved register without
 	     fetching the corresponding value.  */
 	  frame_register_unwind (fi, i, &optimized, &unavailable,
-				 &lval, &addr, &realnum, NULL);
+				 &lval, &addr, &realnum);
 	  /* For moment, only display registers that were saved on the
 	     stack.  */
 	  if (!optimized && !unavailable && lval == lval_memory)
@@ -2221,6 +2221,7 @@ iterate_over_block_locals (const struct block *b,
       switch (sym->aclass ())
 	{
 	case LOC_CONST:
+	case LOC_CONST_BYTES:
 	case LOC_LOCAL:
 	case LOC_REGISTER:
 	case LOC_STATIC:
@@ -2695,7 +2696,7 @@ return_command (const char *retval_exp, int from_tty)
   thisfun = get_frame_function (thisframe);
   gdbarch = get_frame_arch (thisframe);
 
-  if (get_frame_type (get_current_frame ()) == INLINE_FRAME)
+  if (get_frame_type (thisframe) == INLINE_FRAME)
     error (_("Can not force return from an inlined function."));
 
   /* Compute the return value.  If the computation triggers an error,
@@ -2776,7 +2777,14 @@ return_command (const char *retval_exp, int from_tty)
     {
       int confirmed;
 
-      if (thisfun == NULL)
+      if (get_frame_type (thisframe) == SIGTRAMP_FRAME)
+	{
+	  warning (_("Returning from signal trampoline does not fully restore"
+		     " pre-signal state, such as process signal mask."));
+	  confirmed = query (_("%sMake signal trampoline return now? "),
+			     query_prefix.c_str ());
+	}
+      else if (thisfun == NULL)
 	confirmed = query (_("%sMake selected stack frame return now? "),
 			   query_prefix.c_str ());
       else
@@ -2855,9 +2863,11 @@ find_frame_for_function (const char *function_name)
 
   do
     {
+      CORE_ADDR frame_pc = get_frame_address_in_block (frame);
+
       for (size_t i = 0; (i < sals.size () && !found); i++)
-	found = (get_frame_pc (frame) >= func_bounds[i].low
-		 && get_frame_pc (frame) < func_bounds[i].high);
+	found = (frame_pc >= func_bounds[i].low
+		 && frame_pc < func_bounds[i].high);
       if (!found)
 	{
 	  level = 1;

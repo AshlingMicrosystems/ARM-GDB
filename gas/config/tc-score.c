@@ -1,5 +1,5 @@
 /* tc-score.c -- Assembler for Score
-   Copyright (C) 2006-2024 Free Software Foundation, Inc.
+   Copyright (C) 2006-2025 Free Software Foundation, Inc.
    Contributed by:
    Brain.lin (brain.lin@sunplusct.com)
    Mei Ligang (ligang@sunnorth.com.cn)
@@ -259,7 +259,7 @@ const size_t md_longopts_size = sizeof (md_longopts);
 #define s3_BAD_SKIP_COMMA            s3_BAD_ARGS
 #define s3_BAD_GARBAGE               _("garbage following instruction");
 
-#define s3_skip_whitespace(str)  while (*(str) == ' ') ++(str)
+#define s3_skip_whitespace(str)  while (is_whitespace (*(str))) ++(str)
 
 /* The name of the readonly data section.  */
 #define s3_RDATA_SECTION_NAME (OUTPUT_FLAVOR == bfd_target_aout_flavour \
@@ -1099,7 +1099,7 @@ s3_skip_past_comma (char **str)
   char c;
   int comma = 0;
 
-  while ((c = *p) == ' ' || c == ',')
+  while (is_whitespace (c = *p) || c == ',')
     {
       p++;
       if (c == ',' && comma++)
@@ -1376,7 +1376,7 @@ s3_data_op2 (char **str, int shift, enum score_data_type data_type)
       for (; *dataptr != '\0'; dataptr++)
         {
           *dataptr = TOLOWER (*dataptr);
-          if (*dataptr == '!' || *dataptr == ' ')
+          if (*dataptr == '!' || is_whitespace (*dataptr))
             break;
         }
       dataptr = (char *)data_exp;
@@ -2650,7 +2650,7 @@ s3_parse_16_32_inst (char *insnstr, bool gen_frag_p)
   s3_skip_whitespace (operator);
 
   for (p = operator; *p != '\0'; p++)
-    if ((*p == ' ') || (*p == '!'))
+    if (is_whitespace (*p) || (*p == '!'))
       break;
 
   if (*p == '!')
@@ -2700,7 +2700,7 @@ s3_parse_48_inst (char *insnstr, bool gen_frag_p)
   s3_skip_whitespace (operator);
 
   for (p = operator; *p != '\0'; p++)
-    if (*p == ' ')
+    if (is_whitespace (*p))
       break;
 
   c = *p;
@@ -7311,10 +7311,10 @@ s3_gen_reloc (asection * section ATTRIBUTE_UNUSED, fixS * fixp)
   bfd_reloc_code_real_type code;
   const char *type;
 
-  reloc = retval[0] = XNEW (arelent);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
+  retval[0] = reloc;
   retval[1] = NULL;
-
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
   reloc->addend = fixp->fx_offset;
@@ -7342,9 +7342,9 @@ s3_gen_reloc (asection * section ATTRIBUTE_UNUSED, fixS * fixp)
       newval |= (((off >> 14) & 0x3) << 16);
       s3_md_number_to_chars (buf, newval, s3_INSN_SIZE);
 
-      retval[1] = XNEW (arelent);
+      retval[1] = notes_alloc (sizeof (arelent));
+      retval[1]->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
       retval[2] = NULL;
-      retval[1]->sym_ptr_ptr = XNEW (asymbol *);
       *retval[1]->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
       retval[1]->address = (reloc->address + s3_RELAX_RELOC2 (fixp->fx_frag->fr_subtype));
 

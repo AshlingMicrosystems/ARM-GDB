@@ -1,5 +1,5 @@
 /* tc-cr16.c -- Assembler code for the CR16 CPU core.
-   Copyright (C) 2007-2024 Free Software Foundation, Inc.
+   Copyright (C) 2007-2025 Free Software Foundation, Inc.
 
    Contributed by M R Swami Reddy <MR.Swami.Reddy@nsc.com>
 
@@ -537,8 +537,8 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS * fixP)
 	   && (S_GET_SEGMENT (fixP->fx_subsy) == absolute_section)))
     return NULL;
 
-  reloc = XNEW (arelent);
-  reloc->sym_ptr_ptr  = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixP->fx_addsy);
   reloc->address = fixP->fx_frag->fr_address + fixP->fx_where;
   reloc->addend = fixP->fx_offset;
@@ -574,8 +574,6 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS * fixP)
 	{
 	  /* We only resolve difference expressions in the same section.  */
 	  as_bad_subtract (fixP);
-	  free (reloc->sym_ptr_ptr);
-	  free (reloc);
 	  return NULL;
 	}
     }
@@ -1221,7 +1219,7 @@ set_operand (char *operand, ins * cr16_ins)
       /* Set register pair base.  */
       if ((strchr (operandS,'(') != NULL))
 	{
-	  while ((*operandE != '(') && (! ISSPACE (*operandE)))
+	  while ((*operandE != '(') && (! is_whitespace (*operandE)))
 	    operandE++;
 	  if ((cur_arg->rp = get_index_register_pair (operandE)) == nullregister)
 	    as_bad (_("Illegal register pair `%s' in Instruction `%s'"),
@@ -1402,7 +1400,7 @@ parse_operands (ins * cr16_ins, char *operands)
 	  continue;
 	}
 
-      if (*operandT == ' ')
+      if (is_whitespace (*operandT))
 	as_bad (_("Illegal operands (whitespace): `%s'"), ins_parse);
 
       if (*operandT == '(')
@@ -1547,12 +1545,13 @@ check_cinv_options (char * operand)
       switch (*p)
 	{
 	case ',':
-	case ' ':
 	case 'i':
 	case 'u':
 	case 'd':
 	  break;
 	default:
+	  if (is_whitespace (*p))
+	    break;
 	  as_bad (_("Illegal `cinv' parameter: `%c'"), *p);
 	}
     }
@@ -2505,7 +2504,7 @@ md_assemble (char *op)
   reset_vars (op);
 
   /* Strip the mnemonic.  */
-  for (param = op; *param != 0 && !ISSPACE (*param); param++)
+  for (param = op; *param != 0 && !is_whitespace (*param); param++)
     ;
   *param++ = '\0';
 

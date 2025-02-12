@@ -1,5 +1,5 @@
 /* dlltool.c -- tool to generate stuff for PE style DLLs
-   Copyright (C) 1995-2024 Free Software Foundation, Inc.
+   Copyright (C) 1995-2025 Free Software Foundation, Inc.
 
    This file is part of GNU Binutils.
 
@@ -3009,13 +3009,6 @@ gen_lib_file (int delay)
   if (! bfd_close (outarch))
     bfd_fatal (imp_name);
 
-  while (head != NULL)
-    {
-      bfd *n = head->archive_next;
-      bfd_close (head);
-      head = n;
-    }
-
   /* Delete all the temp files.  */
   unlink_temp_files ();
 
@@ -3322,21 +3315,25 @@ identify_search_archive (bfd * abfd,
 			 void (* operation) (bfd *, bfd *, void *),
 			 void * user_storage)
 {
-  bfd *   arfile = NULL;
-  bfd *   last_arfile = NULL;
-  char ** matching;
+  bfd *last_arfile = NULL;
 
   while (1)
     {
-      arfile = bfd_openr_next_archived_file (abfd, arfile);
-
-      if (arfile == NULL)
+      bfd *arfile = bfd_openr_next_archived_file (abfd, last_arfile);
+      if (arfile == NULL
+	  || arfile == last_arfile)
 	{
+	  if (arfile != NULL)
+	    bfd_set_error (bfd_error_malformed_archive);
 	  if (bfd_get_error () != bfd_error_no_more_archived_files)
 	    bfd_fatal (bfd_get_filename (abfd));
 	  break;
 	}
 
+      if (last_arfile != NULL)
+	bfd_close (last_arfile);
+
+      char **matching;
       if (bfd_check_format_matches (arfile, bfd_object, &matching))
 	(*operation) (arfile, abfd, user_storage);
       else
@@ -3345,24 +3342,11 @@ identify_search_archive (bfd * abfd,
 	  free (matching);
 	}
 
-      if (last_arfile != NULL)
-	{
-	  bfd_close (last_arfile);
-	  /* PR 17512: file: 8b2168d4.  */
-	  if (last_arfile == arfile)
-	    {
-	      last_arfile = NULL;
-	      break;
-	    }
-	}
-
       last_arfile = arfile;
     }
 
   if (last_arfile != NULL)
-    {
-      bfd_close (last_arfile);
-    }
+    bfd_close (last_arfile);
 }
 
 /* Call the identify_search_section() function for each section of this

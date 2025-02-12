@@ -1,5 +1,5 @@
 /* x86 specific support for ELF
-   Copyright (C) 2017-2024 Free Software Foundation, Inc.
+   Copyright (C) 2017-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -777,8 +777,8 @@ struct elf_x86_plt
 enum elf_x86_tls_error_type
 {
   elf_x86_tls_error_none,
-  elf_x86_tls_error_add,
   elf_x86_tls_error_add_mov,
+  elf_x86_tls_error_add_movrs,
   elf_x86_tls_error_add_sub_mov,
   elf_x86_tls_error_indirect_call,
   elf_x86_tls_error_lea,

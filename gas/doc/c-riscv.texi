@@ -1,4 +1,4 @@
-@c Copyright (C) 2016-2024 Free Software Foundation, Inc.
+@c Copyright (C) 2016-2025 Free Software Foundation, Inc.
 @c This is part of the GAS manual.
 @c For copying conditions, see the file as.texinfo
 @c man end
@@ -139,12 +139,13 @@ meant to be used by the compiler in shared libraries for DWARF debug info for
 thread local variables.
 
 @cindex LEB128 directives
-@item .uleb128 @var{value}
-@itemx .sleb128 @var{value}
-Emits a signed or unsigned LEB128 value at the current position.  This only
+@item .uleb128 @var{values}
+@itemx .sleb128 @var{values}
+Emits signed or unsigned LEB128 values at the current position.  This only
 accepts constant expressions, because symbol addresses can change with
 relaxation, and we don't support relocations to modify LEB128 values at link
-time.
+time.  An exception are differences between symbols, which may be used with
+@code{.uleb128}.
 
 @cindex Option directive
 @cindex @code{option} directive
@@ -254,6 +255,16 @@ The @var{tag} is either an attribute number, or one of the following:
 @code{Tag_RISCV_arch}, @code{Tag_RISCV_stack_align},
 @code{Tag_RISCV_unaligned_access}, @code{Tag_RISCV_priv_spec},
 @code{Tag_RISCV_priv_spec_minor}, @code{Tag_RISCV_priv_spec_revision}.
+
+@cindex @code{.bfloat16} directive, RISC-V
+@item .bfloat16 @var{value}
+Floating point constructors for the bfloat16 type, example usage:
+
+@smallexample
+	.bfloat16 12.0
+	.bfloat16 NaN
+	.bfloat16 0b:ffc1
+@end smallexample
 
 @end table
 

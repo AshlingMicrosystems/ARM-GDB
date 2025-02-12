@@ -1,5 +1,5 @@
 /* x86 specific support for ELF
-   Copyright (C) 2017-2024 Free Software Foundation, Inc.
+   Copyright (C) 2017-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -32,9 +32,7 @@
 bool
 _bfd_x86_elf_mkobject (bfd *abfd)
 {
-  return bfd_elf_allocate_object (abfd,
-				  sizeof (struct elf_x86_obj_tdata),
-				  get_elf_backend_data (abfd)->target_id);
+  return bfd_elf_allocate_object (abfd, sizeof (struct elf_x86_obj_tdata));
 }
 
 /* _TLS_MODULE_BASE_ needs to be treated especially when linking
@@ -695,6 +693,9 @@ elf_x86_link_hash_table_free (bfd *obfd)
   struct elf_x86_link_hash_table *htab
     = (struct elf_x86_link_hash_table *) obfd->link.hash;
 
+  free (htab->dt_relr_bitmap.u.elf64);
+  free (htab->unaligned_relative_reloc.data);
+  free (htab->relative_reloc.data);
   if (htab->loc_hash_table)
     htab_delete (htab->loc_hash_table);
   if (htab->loc_hash_memory)
@@ -720,23 +721,21 @@ struct bfd_link_hash_table *
 _bfd_x86_elf_link_hash_table_create (bfd *abfd)
 {
   struct elf_x86_link_hash_table *ret;
-  const struct elf_backend_data *bed;
   size_t amt = sizeof (struct elf_x86_link_hash_table);
 
   ret = (struct elf_x86_link_hash_table *) bfd_zmalloc (amt);
   if (ret == NULL)
     return NULL;
 
-  bed = get_elf_backend_data (abfd);
   if (!_bfd_elf_link_hash_table_init (&ret->elf, abfd,
 				      _bfd_x86_elf_link_hash_newfunc,
-				      sizeof (struct elf_x86_link_hash_entry),
-				      bed->target_id))
+				      sizeof (struct elf_x86_link_hash_entry)))
     {
       free (ret);
       return NULL;
     }
 
+  const struct elf_backend_data *bed = get_elf_backend_data (abfd);
   if (bed->target_id == X86_64_ELF_DATA)
     {
       ret->is_reloc_section = elf_x86_64_is_reloc_section;
@@ -827,8 +826,12 @@ elf_x86_linker_defined (struct bfd_link_info *info, const char *name)
 {
   struct elf_link_hash_entry *h;
 
-  h = elf_link_hash_lookup (elf_hash_table (info), name,
-			    false, false, false);
+  /* NULL indicates __ehdr_start.  */
+  if (name == NULL)
+    h = elf_hash_table (info)->hehdr_start;
+  else
+    h = elf_link_hash_lookup (elf_hash_table (info), name,
+			      false, false, false);
   if (h == NULL)
     return;
 
@@ -895,9 +898,10 @@ _bfd_x86_elf_link_check_relocs (bfd *abfd, struct bfd_link_info *info)
 		}
 	    }
 
-	  /* "__ehdr_start" will be defined by linker as a hidden symbol
-	     later if it is referenced and not defined.  */
-	  elf_x86_linker_defined (info, "__ehdr_start");
+	  /* Pass NULL for __ehdr_start which will be defined by
+	     linker as a hidden symbol later if it is referenced and
+	     not defined.  */
+	  elf_x86_linker_defined (info, NULL);
 
 	  if (bfd_link_executable (info))
 	    {
@@ -974,15 +978,7 @@ _bfd_x86_elf_check_relocs (bfd *abfd,
 	  goto error_return;
 	}
 
-      if (r_symndx < symtab_hdr->sh_info)
-	h = NULL;
-      else
-	{
-	  h = sym_hashes[r_symndx - symtab_hdr->sh_info];
-	  while (h->root.type == bfd_link_hash_indirect
-		 || h->root.type == bfd_link_hash_warning)
-	    h = (struct elf_link_hash_entry *) h->root.u.i.link;
-	}
+      h = _bfd_elf_get_link_hash_entry (sym_hashes, r_symndx, symtab_hdr);
 
       if (X86_NEED_DYNAMIC_RELOC_TYPE_P (is_x86_64, r_type)
 	  && NEED_DYNAMIC_RELOCATION_P (is_x86_64, info, true, h, sec,
@@ -1093,12 +1089,15 @@ _bfd_x86_elf_link_relax_section (bfd *abfd ATTRIBUTE_UNUSED,
   bool return_status = false;
   bool keep_symbuf = false;
 
-  if (bfd_link_relocatable (info))
-    return true;
-
   /* Assume we're not going to change any sizes, and we'll only need
      one pass.  */
   *again = false;
+
+  if (bfd_link_relocatable (info))
+    return true;
+
+  if (!info->enable_dt_relr)
+    return true;
 
   bed = get_elf_backend_data (abfd);
   htab = elf_x86_hash_table (info, bed->target_id);
@@ -1207,10 +1206,12 @@ _bfd_x86_elf_link_relax_section (bfd *abfd ATTRIBUTE_UNUSED,
       else
 	{
 	  /* Get H and SEC for GENERATE_DYNAMIC_RELOCATION_P below.  */
-	  h = sym_hashes[r_symndx - symtab_hdr->sh_info];
-	  while (h->root.type == bfd_link_hash_indirect
-		 || h->root.type == bfd_link_hash_warning)
-	    h = (struct elf_link_hash_entry *) h->root.u.i.link;
+	  h = _bfd_elf_get_link_hash_entry (sym_hashes, r_symndx, symtab_hdr);
+	  if (h == NULL)
+	    {
+	      /* FIXMEL: Issue an error message ?  */
+	      continue;
+	    }
 
 	  if (h->root.type == bfd_link_hash_defined
 	      || h->root.type == bfd_link_hash_defweak)
@@ -1787,6 +1788,7 @@ elf_x86_write_dl_relr_bitmap (struct bfd_link_info *info,
 
   /* Cache the section contents for elf_link_input_bfd.  */
   sec->contents = contents;
+  sec->alloced = 1;
 
   if (ABI_64_P (info->output_bfd))
     for (i = 0; i < htab->dt_relr_bitmap.count; i++, contents += 8)
@@ -2016,6 +2018,7 @@ _bfd_x86_elf_write_sframe_plt (bfd *output_bfd,
 
   sec->size = (bfd_size_type) sec_size;
   sec->contents = (unsigned char *) bfd_zalloc (dynobj, sec->size);
+  sec->alloced = 1;
   memcpy (sec->contents, contents, sec_size);
 
   sframe_encoder_free (&ectx);
@@ -2673,6 +2676,7 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
       s->contents = (unsigned char *) bfd_zalloc (dynobj, s->size);
       if (s->contents == NULL)
 	return false;
+      s->alloced = 1;
     }
 
   if (htab->plt_eh_frame != NULL
@@ -3308,19 +3312,19 @@ _bfd_x86_elf_link_report_tls_transition_error
 	 asect);
       break;
 
-    case elf_x86_tls_error_add:
-      info->callbacks->einfo
-	/* xgettext:c-format */
-	(_("%pB(%pA+0x%v): relocation %s against `%s' must be used "
-	   "in ADD only\n"),
-	 abfd, asect, rel->r_offset, from_reloc_name, name);
-      break;
-
     case elf_x86_tls_error_add_mov:
       info->callbacks->einfo
 	/* xgettext:c-format */
 	(_("%pB(%pA+0x%v): relocation %s against `%s' must be used "
 	   "in ADD or MOV only\n"),
+	 abfd, asect, rel->r_offset, from_reloc_name, name);
+      break;
+
+    case elf_x86_tls_error_add_movrs:
+      info->callbacks->einfo
+	/* xgettext:c-format */
+	(_("%pB(%pA+0x%v): relocation %s against `%s' must be used "
+	   "in ADD or MOVRS only\n"),
 	 abfd, asect, rel->r_offset, from_reloc_name, name);
       break;
 
@@ -4704,6 +4708,7 @@ _bfd_x86_elf_link_setup_gnu_properties
 	    abort ();
 	  s->size = htab->dynamic_interpreter_size;
 	  s->contents = (unsigned char *) htab->dynamic_interpreter;
+	  s->alloced = 1;
 	  htab->interp = s;
 	}
 
@@ -4896,7 +4901,8 @@ _bfd_x86_elf_link_fixup_gnu_properties
   for (p = *listp; p; p = p->next)
     {
       unsigned int type = p->property.pr_type;
-      if (type == GNU_PROPERTY_X86_COMPAT_ISA_1_USED
+      if (type == GNU_PROPERTY_MEMORY_SEAL
+	  || type == GNU_PROPERTY_X86_COMPAT_ISA_1_USED
 	  || type == GNU_PROPERTY_X86_COMPAT_ISA_1_NEEDED
 	  || (type >= GNU_PROPERTY_X86_UINT32_AND_LO
 	      && type <= GNU_PROPERTY_X86_UINT32_AND_HI)

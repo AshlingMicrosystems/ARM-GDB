@@ -158,23 +158,6 @@ load_lib gdb-utils.exp
 load_lib memory.exp
 load_lib check-test-names.exp
 
-# The path to the GCORE script to test.
-global GCORE
-if {![info exists GCORE]} {
-    set GCORE [findfile $base_dir/../../gdb/gcore]
-}
-verbose "using GCORE = $GCORE" 2
-
-# Return 0 if the gcore scipt is missing.
-proc has_gcore_script {} {
-    global GCORE
-    if {$GCORE == ""} {
-	return 0
-    } else {
-	return 1
-    }
-}
-
 # The path to the GDB binary to test.
 global GDB
 
@@ -216,6 +199,23 @@ if ![info exists GDB_DATA_DIRECTORY] {
     set GDB_DATA_DIRECTORY [file normalize "[pwd]/../data-directory"]
 }
 verbose "using GDB_DATA_DIRECTORY = $GDB_DATA_DIRECTORY" 2
+
+# The path to the GCORE script to test.
+global GCORE
+if {![info exists GCORE]} {
+    set GCORE [file join [file dirname $GDB] [transform gcore]]
+}
+verbose "using GCORE = $GCORE" 2
+
+# Return 0 if the gcore scipt is missing.
+proc has_gcore_script {} {
+    global GCORE
+    if {$GCORE == ""} {
+	return 0
+    } else {
+	return 1
+    }
+}
 
 # GDBFLAGS is available for the user to set on the command line.
 # E.g. make check RUNTESTFLAGS=GDBFLAGS=mumble
@@ -1022,6 +1022,10 @@ proc command_to_message { command } {
 #   if one of them matches.  If MESSAGE is empty COMMAND will be used.
 # -prompt PROMPT_REGEXP specifies a regexp matching the expected prompt
 #   after the command output.  If empty, defaults to "$gdb_prompt $".
+# -no-prompt-anchor specifies that if the default prompt regexp is used, it
+#   should not be anchored at the end of the buffer.  This means that the
+#   pattern can match even if there is stuff output after the prompt.  Does not
+#   have any effect if -prompt is specified.
 # -lbl specifies that line-by-line matching will be used.
 # EXPECT_ARGUMENTS will be fed to expect in addition to the standard
 #   patterns.  Pattern elements will be evaluated in the caller's
@@ -1121,6 +1125,7 @@ proc gdb_test_multiple { command message args } {
 
     set line_by_line 0
     set prompt_regexp ""
+    set prompt_anchor 1
     for {set i 0} {$i < [llength $args]} {incr i} {
 	set arg [lindex $args $i]
 	if { $arg  == "-prompt" } {
@@ -1128,6 +1133,8 @@ proc gdb_test_multiple { command message args } {
 	    set prompt_regexp [lindex $args $i]
 	} elseif { $arg == "-lbl" } {
 	    set line_by_line 1
+	} elseif { $arg == "-no-prompt-anchor" } {
+	    set prompt_anchor 0
 	} else {
 	    set user_code $arg
 	    break
@@ -1139,7 +1146,7 @@ proc gdb_test_multiple { command message args } {
 	error "Too few arguments to gdb_test_multiple"
     }
 
-    set prompt_regexp [fill_in_default_prompt $prompt_regexp true]
+    set prompt_regexp [fill_in_default_prompt $prompt_regexp $prompt_anchor]
 
     if { $message == "" } {
 	set message [command_to_message $command]
@@ -2238,8 +2245,10 @@ proc gdb_reinitialize_dir { subdir } {
     }
     send_gdb "dir\n"
     gdb_expect 60 {
-	-re "Reinitialize source path to empty.*y or n. " {
-	    send_gdb "y\n" answer
+	-re "Reinitialize source path to empty.*y or n.(\\\s.answered Y; input not from terminal.)?" {
+	    if {![info exists expect_out(1,string)]} {
+		send_gdb "y\n" answer
+	    }
 	    gdb_expect 60 {
 		-re "Source directories searched.*$gdb_prompt $" {
 		    send_gdb "dir $subdir\n"
@@ -3669,7 +3678,7 @@ proc can_hardware_single_step {} {
 
     if { [istarget "arm*-*-*"] || [istarget "mips*-*-*"]
 	 || [istarget "tic6x-*-*"] || [istarget "sparc*-*-linux*"]
-	 || [istarget "nios2-*-*"] || [istarget "riscv*-*-linux*"] } {
+	 || [istarget "riscv*-*-linux*"] } {
 	return 0
     }
 
@@ -3698,6 +3707,7 @@ proc supports_process_record {} {
     if { [istarget "arm*-*-linux*"] || [istarget "x86_64-*-linux*"]
          || [istarget "i\[34567\]86-*-linux*"]
          || [istarget "aarch64*-*-linux*"]
+	 || [istarget "loongarch*-*-linux*"]
          || [istarget "powerpc*-*-linux*"]
          || [istarget "s390*-*-linux*"] } {
 	return 1
@@ -3717,6 +3727,7 @@ proc supports_reverse {} {
     if { [istarget "arm*-*-linux*"] || [istarget "x86_64-*-linux*"]
          || [istarget "i\[34567\]86-*-linux*"]
          || [istarget "aarch64*-*-linux*"]
+	 || [istarget "loongarch*-*-linux*"]
          || [istarget "powerpc*-*-linux*"]
          || [istarget "s390*-*-linux*"] } {
 	return 1
@@ -4321,6 +4332,70 @@ gdb_caching_proc allow_avx512fp16_tests {} {
 
     verbose "$me:  returning $allow_avx512fp16_tests" 2
     return $allow_avx512fp16_tests
+}
+
+# Run a test on the target to see if it supports LAM 57.  Return 1 if so,
+# 0 if it does not.  Based on the arch_prctl() handle ARCH_ENABLE_TAGGED_ADDR
+# to enable LAM which fails if the hardware or the OS does not support LAM.
+
+gdb_caching_proc allow_lam_tests {} {
+    global gdb_prompt inferior_exited_re
+
+    set me "allow_lam_tests"
+    if { ![istarget "x86_64-*-*"] } {
+	verbose "$me:  target does not support LAM, returning 1" 2
+	return 0
+    }
+
+    # Compile a test program.
+    set src {
+      #define _GNU_SOURCE
+      #include <unistd.h>
+      #include <sys/syscall.h>
+      #include <assert.h>
+      #include <errno.h>
+      #include <asm/prctl.h>
+
+      int configure_lam ()
+      {
+	errno = 0;
+	syscall (SYS_arch_prctl, ARCH_ENABLE_TAGGED_ADDR, 6);
+	assert_perror (errno);
+	return errno;
+      }
+
+      int
+      main () { return configure_lam (); }
+    }
+
+    if {![gdb_simple_compile $me $src executable ""]} {
+	return 0
+    }
+    # No error message, compilation succeeded so now run it via gdb.
+
+    set allow_lam_tests 0
+    clean_restart $obj
+    gdb_run_cmd
+    gdb_expect {
+	-re ".*$inferior_exited_re with code.*${gdb_prompt} $" {
+	    verbose -log "$me:  LAM support not detected."
+	}
+	-re ".*Program received signal SIGABRT, Aborted.*${gdb_prompt} $" {
+	    verbose -log "$me:  LAM support not detected."
+	}
+	-re ".*$inferior_exited_re normally.*${gdb_prompt} $" {
+	    verbose -log "$me:  LAM support detected."
+	    set allow_lam_tests 1
+	}
+	default {
+	    warning "\n$me:  default case taken."
+	}
+    }
+    gdb_exit
+    remote_file build delete $obj
+
+    verbose "$me:  returning $allow_lam_tests" 2
+    return $allow_lam_tests
 }
 
 # Run a test on the target to see if it supports btrace hardware.  Return 1 if so,
@@ -8633,8 +8708,8 @@ proc test_prefix_command_help { command_list expected_initial_lines args } {
     # Use 'list' and not just {} because we want variables to
     # be expanded in this list.
     set l_stock_body [list\
-         "List of $full_command subcommands\:.*\[\r\n\]+"\
-         "Type \"help $full_command\" followed by $full_command subcommand name for full documentation\.\[\r\n\]+"]
+         "List of \"$full_command\" subcommands\:.*\[\r\n\]+"\
+         "Type \"help $full_command\" followed by subcommand name for full documentation\.\[\r\n\]+"]
     set l_entire_body [concat $expected_initial_lines $l_stock_body $help_list_trailer]
     if {[llength $args]>0} {
         help_test_raw "help ${command}" $l_entire_body [lindex $args 0]
@@ -10197,10 +10272,11 @@ proc with_override { name override body } {
 # Run BODY after setting the TERM environment variable to 'ansi', and
 # unsetting the NO_COLOR environment variable.
 proc with_ansi_styling_terminal { body } {
-    save_vars { ::env(TERM) ::env(NO_COLOR) } {
+    save_vars { ::env(TERM) ::env(NO_COLOR) ::env(COLORTERM) } {
 	# Set environment variables to allow styling.
 	setenv TERM ansi
 	unset -nocomplain ::env(NO_COLOR)
+	unset -nocomplain ::env(COLORTERM)
 
 	set code [catch {uplevel 1 $body} result]
     }
@@ -10357,6 +10433,51 @@ gdb_caching_proc have_avx {} {
 
     verbose "$me: returning $status" 2
     return $status
+}
+
+# Return 1 if target supports avx2, otherwise return 0.
+gdb_caching_proc have_avx2 {} {
+	global srcdir
+
+	set me "have_avx2"
+	if { ![istarget "i?86-*-*"] && ![istarget "x86_64-*-*"] } {
+	    verbose "$me: target does not support avx2, returning 0" 2
+	    return 0
+	}
+
+	# Compile a test program.
+	set src {
+	   #include "nat/x86-cpuid.h"
+
+	    int main() {
+	      unsigned int eax, ebx, ecx, edx;
+
+	    if (!x86_cpuid_count (7, 0, &eax, &ebx, &ecx, &edx))
+	      return 0;
+
+	    if ((ebx & bit_AVX2) == bit_AVX2)
+	      return 1;
+	    else
+	      return 0;
+	    }
+	}
+	set compile_flags "incdir=${srcdir}/.."
+	if {![gdb_simple_compile $me $src executable $compile_flags]} {
+	    return 0
+	}
+
+	set target_obj [gdb_remote_download target $obj]
+	set result [remote_exec target $target_obj]
+	set status [lindex $result 0]
+	set output [lindex $result 1]
+	if { $output != "" } {
+	    set status 0
+	}
+
+	remote_file build delete $obj
+
+	verbose "$me: returning $status" 2
+	return $status
 }
 
 # Called as
@@ -10893,6 +11014,39 @@ gdb_caching_proc root_user {} {
     regexp -all ".*uid=(\[0-9\]+).*" $output dummy uid
 
     return [expr $uid == 0]
+}
+
+# Return nul-terminated string read from section SECTION of EXEC.  Return ""
+# if no such section or nul-terminated string was found.  Function is useful
+# for sections ".interp" or ".gnu_debuglink".
+
+proc section_get {exec section} {
+    global subdir
+    set tmp [standard_output_file section_get.tmp]
+    set objcopy_program [gdb_find_objcopy]
+
+    set command "exec $objcopy_program -O binary --set-section-flags $section=A --change-section-address $section=0 -j $section $exec $tmp"
+    verbose -log "command is $command"
+    set result [catch $command output]
+    verbose -log "result is $result"
+    verbose -log "output is $output"
+    if {$result == 1} {
+	return ""
+    }
+    set fi [open $tmp]
+    fconfigure $fi -translation binary
+    set data [read $fi]
+    close $fi
+    file delete $tmp
+    # .interp has size $len + 1 but .gnu_debuglink contains garbage after \000.
+    set len [string first \000 $data]
+    if {$len < 0} {
+	verbose -log "section $section not found"
+	return ""
+    }
+    set retval [string range $data 0 [expr $len - 1]]
+    verbose -log "section $section is <$retval>"
+    return $retval
 }
 
 # Always load compatibility stuff.

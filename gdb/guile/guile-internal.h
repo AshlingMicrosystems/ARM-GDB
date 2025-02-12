@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef GUILE_GUILE_INTERNAL_H
-#define GUILE_GUILE_INTERNAL_H
+#ifndef GDB_GUILE_GUILE_INTERNAL_H
+#define GDB_GUILE_GUILE_INTERNAL_H
 
 /* See README file in this directory for implementation notes, coding
    conventions, et.al.  */
@@ -30,12 +30,25 @@
 #include "objfiles.h"
 #include "top.h"
 
-#if __cplusplus >= 202002L
-/* Work around Werror=volatile in SCM_UNPACK for
-   SCM_DEBUG_TYPING_STRICTNESS == 1.  Reported upstream:
-   https://debbugs.gnu.org/cgi/bugreport.cgi?bug=65333 .  */
+/* For libguile v2.0.9 and SCM_DEBUG_TYPING_STRICTNESS == 1, SCM_UNPACK(x) is
+   defined as:
+
+     ((scm_t_bits) (0? (*(SCM*)0=(x)): x))
+
+   and for v2.0.10 it's defined as:
+
+     ((scm_t_bits) (0? (*(volatile SCM *)0=(x)): x))
+
+   The volatile was added to avoid a clang warning.
+
+   The latter form causes a Werror=volatile with C++20.
+   This was reported upstream (
+   https://debbugs.gnu.org/cgi/bugreport.cgi?bug=65333 ).
+
+   The former form causes a Werror=sequence-point with gcc 7-14.
+
+   Work around these problem by using SCM_DEBUG_TYPING_STRICTNESS == 0.  */
 #define SCM_DEBUG_TYPING_STRICTNESS 0
-#endif
 #include "libguile.h"
 
 struct block;
@@ -446,6 +459,14 @@ extern int gdbscm_valid_command_class_p (int command_class);
 extern char *gdbscm_canonicalize_command_name (const char *name,
 					       int want_trailing_space);
 
+/* scm-color.c */
+
+extern SCM coscm_scm_from_color (const ui_file_style::color &color);
+
+extern int coscm_is_color (SCM scm);
+
+extern const ui_file_style::color & coscm_get_color (SCM color_scm);
+
 /* scm-frame.c */
 
 struct frame_smob;
@@ -603,7 +624,7 @@ extern bool gdbscm_auto_load_enabled (const struct extension_language_defn *);
 
 extern void gdbscm_preserve_values
   (const struct extension_language_defn *,
-   struct objfile *, htab_t copied_types);
+   struct objfile *, copied_types_hash_t &copied_types);
 
 extern enum ext_lang_rc gdbscm_apply_val_pretty_printer
   (const struct extension_language_defn *,
@@ -624,6 +645,7 @@ extern void gdbscm_initialize_arches (void);
 extern void gdbscm_initialize_auto_load (void);
 extern void gdbscm_initialize_blocks (void);
 extern void gdbscm_initialize_breakpoints (void);
+extern void gdbscm_initialize_colors (void);
 extern void gdbscm_initialize_commands (void);
 extern void gdbscm_initialize_disasm (void);
 extern void gdbscm_initialize_exceptions (void);
@@ -729,4 +751,4 @@ gdbscm_wrap (Function &&func, Args &&... args)
   return result;
 }
 
-#endif /* GUILE_GUILE_INTERNAL_H */
+#endif /* GDB_GUILE_GUILE_INTERNAL_H */

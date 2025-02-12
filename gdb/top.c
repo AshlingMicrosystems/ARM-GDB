@@ -85,10 +85,6 @@
 
 extern void initialize_all_files (void);
 
-#define PROMPT(X) the_prompts.prompt_stack[the_prompts.top + X].prompt
-#define PREFIX(X) the_prompts.prompt_stack[the_prompts.top + X].prefix
-#define SUFFIX(X) the_prompts.prompt_stack[the_prompts.top + X].suffix
-
 /* Default command line prompt.  This is overridden in some configs.  */
 
 #ifndef DEFAULT_PROMPT
@@ -549,12 +545,10 @@ execute_command (const char *p, int from_tty)
 	   that can be followed by its args), report the list of
 	   subcommands.  */
 	{
-	  std::string prefixname = c->prefixname ();
-	  std::string prefixname_no_space
-	    = prefixname.substr (0, prefixname.length () - 1);
+	  std::string prefixname = c->prefixname_no_space ();
 	  gdb_printf
 	    ("\"%s\" must be followed by the name of a subcommand.\n",
-	     prefixname_no_space.c_str ());
+	     prefixname.c_str ());
 	  help_list (*c->subcommands, prefixname.c_str (), all_commands,
 		     gdb_stdout);
 	}
@@ -1054,11 +1048,14 @@ static int operate_saved_history = -1;
 static void
 gdb_rl_operate_and_get_next_completion (void)
 {
-  int delta = where_history () - operate_saved_history;
+  if (operate_saved_history != -1)
+    {
+      int delta = where_history () - operate_saved_history;
 
-  /* The `key' argument to rl_get_previous_history is ignored.  */
-  rl_get_previous_history (delta, 0);
-  operate_saved_history = -1;
+      /* The `key' argument to rl_get_previous_history is ignored.  */
+      rl_get_previous_history (delta, 0);
+      operate_saved_history = -1;
+    }
 
   /* readline doesn't automatically update the display for us.  */
   rl_redisplay ();
@@ -1083,9 +1080,10 @@ gdb_rl_operate_and_get_next (int count, int key)
   /* Find the current line, and find the next line to use.  */
   where = where_history();
 
-  if ((history_is_stifled () && (history_length >= history_max_entries))
-      || (where >= history_length - 1))
+  if (history_is_stifled () && history_length >= history_max_entries)
     operate_saved_history = where;
+  else if (where >= history_length - 1)
+    operate_saved_history = -1;
   else
     operate_saved_history = where + 1;
 
@@ -1330,8 +1328,9 @@ There is NO WARRANTY, to the extent permitted by law.",
   if (!interactive)
     return;
 
-  gdb_printf (stream, ("\nType \"show copying\" and "
-		       "\"show warranty\" for details.\n"));
+  gdb_printf (stream, ("\nType \"%ps\" and \"%ps\" for details.\n"),
+	      styled_string (command_style.style (), "show copying"),
+	      styled_string (command_style.style (), "show warranty"));
 
   /* After the required info we print the configuration information.  */
 
@@ -1347,8 +1346,8 @@ There is NO WARRANTY, to the extent permitted by law.",
     }
   gdb_printf (stream, "\".\n");
 
-  gdb_printf (stream, _("Type \"show configuration\" "
-			"for configuration details.\n"));
+  gdb_printf (stream, _("Type \"%ps\" for configuration details.\n"),
+	      styled_string (command_style.style (), "show configuration"));
 
   if (REPORT_BUGS_TO[0])
     {
@@ -1364,10 +1363,11 @@ resources online at:\n    <%ps>."),
 	      styled_string (file_name_style.style (),
 			     "http://www.gnu.org/software/gdb/documentation/"));
   gdb_printf (stream, "\n\n");
-  gdb_printf (stream, _("For help, type \"help\".\n"));
+  gdb_printf (stream, _("For help, type \"%ps\".\n"),
+	      styled_string (command_style.style (), "help"));
   gdb_printf (stream,
-	      _("Type \"apropos word\" to search for commands \
-related to \"word\"."));
+	      _("Type \"%ps\" to search for commands related to \"word\"."),
+	      styled_string (command_style.style (), "apropos word"));
 }
 
 /* Print the details of GDB build-time configuration.  */
@@ -2128,6 +2128,17 @@ show_startup_quiet (struct ui_file *file, int from_tty,
 }
 
 static void
+init_colorsupport_var ()
+{
+  const std::vector<color_space> &cs = colorsupport ();
+  std::string s;
+  for (color_space c : cs)
+    s.append (s.empty () ? "" : ",").append (color_space_name (c));
+  struct internalvar *colorsupport_var = create_internalvar ("_colorsupport");
+  set_internalvar_string (colorsupport_var, s.c_str ());
+}
+
+static void
 init_main (void)
 {
   /* Initialize the prompt to a simple "(gdb) " prompt or to whatever
@@ -2331,6 +2342,9 @@ gdb_init ()
      during startup.  */
   set_language (language_c);
   expected_language = current_language;	/* Don't warn about the change.  */
+
+  /* Create $_colorsupport convenience variable.  */
+  init_colorsupport_var ();
 }
 
 void _initialize_top ();

@@ -1,5 +1,5 @@
 /* V850-specific support for 32-bit ELF
-   Copyright (C) 1996-2024 Free Software Foundation, Inc.
+   Copyright (C) 1996-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -2392,6 +2392,7 @@ v850_elf_make_note_section (bfd * abfd)
     return NULL;
 
   s->contents = data;
+  s->alloced = 1;
 
   /* Provide default (= uninitilaised) values for all of the notes.  */
   for (id = V850_NOTE_ALIGNMENT; id <= NUM_V850_NOTES; id++)

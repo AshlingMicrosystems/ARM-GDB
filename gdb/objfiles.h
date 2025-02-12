@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#if !defined (OBJFILES_H)
-#define OBJFILES_H
+#ifndef GDB_OBJFILES_H
+#define GDB_OBJFILES_H
 
 #include "gdbsupport/gdb_obstack.h"
 #include "objfile-flags.h"
@@ -32,6 +32,7 @@
 #include "jit.h"
 #include "quick-symbol.h"
 #include <forward_list>
+#include "gdbsupport/unordered_map.h"
 
 struct htab;
 struct objfile_data;
@@ -630,6 +631,9 @@ public:
     gdb_assert (section->owner == nullptr || section->owner == this->obfd);
 
     int idx = gdb_bfd_section_index (this->obfd.get (), section);
+
+    /* Guarantee that the section offsets were initialized.  */
+    gdb_assert (this->section_offsets.size () > idx);
     return this->section_offsets[idx];
   }
 
@@ -641,6 +645,9 @@ public:
     gdb_assert (section->owner == nullptr || section->owner == this->obfd);
 
     int idx = gdb_bfd_section_index (this->obfd.get (), section);
+
+    /* Guarantee that the section offsets were initialized.  */
+    gdb_assert (this->section_offsets.capacity () > idx);
     this->section_offsets[idx] = offset;
   }
 
@@ -857,7 +864,8 @@ public:
      Very few blocks have a static link, so it's more memory efficient to
      store these here rather than in struct block.  Static links must be
      allocated on the objfile's obstack.  */
-  htab_up static_links;
+  gdb::unordered_map<const block *, const dynamic_prop *>
+    static_links;
 
   /* JIT-related data for this objfile, if the objfile is a JITer;
      that is, it produces JITed objfiles.  */
@@ -887,7 +895,7 @@ public:
 
 /* A deleter for objfile.  */
 
-struct objfile_deleter
+struct objfile_unlinker
 {
   void operator() (objfile *ptr) const
   {
@@ -897,7 +905,7 @@ struct objfile_deleter
 
 /* A unique pointer that holds an objfile.  */
 
-typedef std::unique_ptr<objfile, objfile_deleter> objfile_up;
+typedef std::unique_ptr<objfile, objfile_unlinker> scoped_objfile_unlinker;
 
 /* Relocation offset applied to the section.  */
 inline CORE_ADDR
@@ -1053,4 +1061,4 @@ extern void objfile_register_static_link
 extern const struct dynamic_prop *objfile_lookup_static_link
   (struct objfile *objfile, const struct block *block);
 
-#endif /* !defined (OBJFILES_H) */
+#endif /* GDB_OBJFILES_H */

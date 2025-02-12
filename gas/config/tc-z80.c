@@ -1,5 +1,5 @@
 /* tc-z80.c -- Assemble code for the Zilog Z80, Z180, EZ80 and ASCII R800
-   Copyright (C) 2005-2024 Free Software Foundation, Inc.
+   Copyright (C) 2005-2025 Free Software Foundation, Inc.
    Contributed by Arnold Metselaar <arnold_m@operamail.com>
 
    This file is part of GAS, the GNU Assembler.
@@ -582,7 +582,7 @@ z80_elf_final_processing (void)
 static const char *
 skip_space (const char *s)
 {
-  while (*s == ' ' || *s == '\t')
+  while (is_whitespace (*s))
     ++s;
   return s;
 }
@@ -623,7 +623,7 @@ z80_start_line_hook (void)
 	case '#': /* force to use next expression as immediate value in SDCC */
 	  if (!sdcc_compat)
 	   break;
-	  if (ISSPACE(p[1]) && *skip_space (p + 1) == '(')
+	  if (is_whitespace (p[1]) && *skip_space (p + 1) == '(')
 	    { /* ld a,# (expr)... -> ld a,0+(expr)... */
 	      *p++ = '0';
 	      *p = '+';
@@ -3384,7 +3384,7 @@ assemble_suffix (const char **suffix)
 
   for (i = 0; (i < 3) && (ISALPHA (*p)); i++)
     sbuf[i] = TOLOWER (*p++);
-  if (*p && !ISSPACE (*p))
+  if (*p && !is_whitespace (*p))
     return 0;
   *suffix = p;
   sbuf[i] = 0;
@@ -3670,7 +3670,7 @@ md_assemble (char *str)
   else
     {
       dwarf2_emit_insn (0);
-      if ((*p) && (!ISSPACE (*p)))
+      if ((*p) && !is_whitespace (*p))
         {
           if (*p != '.' || !(ins_ok & INS_EZ80) || !assemble_suffix (&p))
             {
@@ -3859,12 +3859,12 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED , fixS *fixp)
       return NULL;
     }
 
-  reloc               = XNEW (arelent);
-  reloc->sym_ptr_ptr  = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
-  reloc->address      = fixp->fx_frag->fr_address + fixp->fx_where;
-  reloc->addend       = fixp->fx_offset;
-  reloc->howto        = bfd_reloc_type_lookup (stdoutput, fixp->fx_r_type);
+  reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
+  reloc->addend = fixp->fx_offset;
+  reloc->howto = bfd_reloc_type_lookup (stdoutput, fixp->fx_r_type);
   if (reloc->howto == NULL)
     {
       as_bad_where (fixp->fx_file, fixp->fx_line,

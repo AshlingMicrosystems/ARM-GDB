@@ -1,5 +1,5 @@
 /* Generic BFD support for file formats.
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
    Written by Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -46,6 +46,10 @@ SUBSECTION
 #include "sysdep.h"
 #include "bfd.h"
 #include "libbfd.h"
+#if BFD_SUPPORTS_PLUGINS
+#include "plugin-api.h"
+#include "plugin.h"
+#endif
 
 /* IMPORT from targets.c.  */
 extern const size_t _bfd_target_vector_entries;
@@ -349,23 +353,32 @@ bfd_set_lto_type (bfd *abfd ATTRIBUTE_UNUSED)
 #if BFD_SUPPORTS_PLUGINS
   if (abfd->format == bfd_object
       && abfd->lto_type == lto_non_object
-      && (abfd->flags & (DYNAMIC | EXEC_P)) == 0)
+      && (abfd->flags
+	  & (DYNAMIC
+	     | (bfd_get_flavour (abfd) == bfd_target_elf_flavour
+		? EXEC_P : 0))) == 0)
     {
       asection *sec;
       enum bfd_lto_object_type type = lto_non_ir_object;
-      struct lto_section lsection;
+      struct lto_section lsection = { 0, 0, 0, 0 };
       /* GCC uses .gnu.lto_.lto.<some_hash> as a LTO bytecode information
 	 section.  */
       for (sec = abfd->sections; sec != NULL; sec = sec->next)
-	if (startswith (sec->name, ".gnu.lto_.lto.")
-	    && bfd_get_section_contents (abfd, sec, &lsection, 0,
-					 sizeof (struct lto_section)))
+	if (strcmp (sec->name, GNU_OBJECT_ONLY_SECTION_NAME) == 0)
+	  {
+	    type = lto_mixed_object;
+	    abfd->object_only_section = sec;
+	    break;
+	  }
+	else if (lsection.major_version == 0
+		 && startswith (sec->name, ".gnu.lto_.lto.")
+		 && bfd_get_section_contents (abfd, sec, &lsection, 0,
+					      sizeof (struct lto_section)))
 	  {
 	    if (lsection.slim_object)
 	      type = lto_slim_ir_object;
 	    else
 	      type = lto_fat_ir_object;
-	    break;
 	  }
 
       abfd->lto_type = type;
@@ -397,9 +410,6 @@ bool
 bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
 {
   extern const bfd_target binary_vec;
-#if BFD_SUPPORTS_PLUGINS
-  extern const bfd_target plugin_vec;
-#endif
   const bfd_target * const *target;
   const bfd_target **matching_vector = NULL;
   const bfd_target *save_targ, *right_targ, *ar_right_targ, *match_targ;
@@ -450,6 +460,10 @@ bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
   /* Don't report errors on recursive calls checking the first element
      of an archive.  */
   orig_messages = _bfd_set_error_handler_caching (&messages);
+
+  /* Locking is required here in order to manage _bfd_section_id.  */
+  if (!bfd_lock ())
+    return false;
 
   preserve_match.marker = NULL;
   if (!bfd_preserve_save (abfd, &preserve, NULL))
@@ -503,10 +517,17 @@ bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
 	 check the default target twice.  */
       if (*target == &binary_vec
 #if BFD_SUPPORTS_PLUGINS
-	  || (match_count != 0 && *target == &plugin_vec)
+	  || (match_count != 0 && bfd_plugin_target_p (*target))
 #endif
 	  || (!abfd->target_defaulted && *target == save_targ))
 	continue;
+
+#if BFD_SUPPORTS_PLUGINS
+      /* If the plugin target is explicitly specified when a BFD file
+	 is opened, don't check it twice.  */
+      if (bfd_plugin_specified_p () && bfd_plugin_target_p (*target))
+	continue;
+#endif
 
       /* If we already tried a match, the bfd is modified and may
 	 have sections attached, which will confuse the next
@@ -531,14 +552,6 @@ bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
       if (cleanup)
 	{
 	  int match_priority = abfd->xvec->match_priority;
-#if BFD_SUPPORTS_PLUGINS
-	  /* If this object can be handled by a plugin, give that the
-	     lowest priority; objects both handled by a plugin and
-	     with an underlying object format will be claimed
-	     separately by the plugin.  */
-	  if (*target == &plugin_vec)
-	    match_priority = (*target)->match_priority;
-#endif
 
 	  if (abfd->format != bfd_archive
 	      || (bfd_has_map (abfd)
@@ -698,7 +711,10 @@ bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
       bfd_set_lto_type (abfd);
 
       /* File position has moved, BTW.  */
-      return bfd_cache_set_uncloseable (abfd, old_in_format_matches, NULL);
+      bool ret = bfd_cache_set_uncloseable (abfd, old_in_format_matches, NULL);
+      if (!bfd_unlock ())
+	return false;
+      return ret;
     }
 
   if (match_count == 0)
@@ -742,6 +758,7 @@ bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
   _bfd_restore_error_handler_caching (orig_messages);
   print_and_clear_messages (&messages, PER_XVEC_NO_TARGET);
   bfd_cache_set_uncloseable (abfd, old_in_format_matches, NULL);
+  bfd_unlock ();
   return false;
 }
 

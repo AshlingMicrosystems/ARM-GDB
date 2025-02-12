@@ -1,5 +1,5 @@
 /* POWER/PowerPC XCOFF linker support.
-   Copyright (C) 1995-2024 Free Software Foundation, Inc.
+   Copyright (C) 1995-2025 Free Software Foundation, Inc.
    Written by Ian Lance Taylor <ian@cygnus.com>, Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -439,37 +439,29 @@ _bfd_xcoff_canonicalize_dynamic_reloc (bfd *abfd,
 
       bfd_xcoff_swap_ldrel_in (abfd, elrel, &ldrel);
 
-      if (ldrel.l_symndx >= 3)
-	relbuf->sym_ptr_ptr = syms + (ldrel.l_symndx - 3);
-      else
+      if (ldrel.l_symndx + 2 < 5)
 	{
-	  const char *name;
-	  asection *sec;
-
-	  switch (ldrel.l_symndx)
-	    {
-	    case 0:
-	      name = ".text";
-	      break;
-	    case 1:
-	      name = ".data";
-	      break;
-	    case 2:
-	      name = ".bss";
-	      break;
-	    default:
-	      abort ();
-	      break;
-	    }
-
-	  sec = bfd_get_section_by_name (abfd, name);
+	  static const char stdsec[5][8]
+	    = { ".tbss", ".tdata", ".text", ".data", ".bss" };
+	  const char *name = stdsec[ldrel.l_symndx + 2];
+	  asection *sec = bfd_get_section_by_name (abfd, name);
 	  if (sec == NULL)
 	    {
 	      bfd_set_error (bfd_error_bad_value);
 	      return -1;
 	    }
 
-	  relbuf->sym_ptr_ptr = sec->symbol_ptr_ptr;
+	  relbuf->sym_ptr_ptr = &sec->symbol;
+	}
+      else if (ldrel.l_symndx - 3 < ldhdr.l_nsyms)
+	relbuf->sym_ptr_ptr = syms + (ldrel.l_symndx - 3);
+      else
+	{
+	  _bfd_error_handler
+	    /* xgettext:c-format */
+	    (_("%pB: warning: illegal symbol index %lu in relocs"),
+	     abfd, (unsigned long) ldrel.l_symndx);
+	  relbuf->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;
 	}
 
       relbuf->address = ldrel.l_vaddr;
@@ -3998,6 +3990,7 @@ xcoff_build_loader_section (struct xcoff_loader_info *ldinfo)
   lsec->contents = bfd_zalloc (output_bfd, lsec->size);
   if (lsec->contents == NULL)
     return false;
+  lsec->alloced = 1;
 
   /* Set up the header.  */
   bfd_xcoff_swap_ldhdr_out (output_bfd, ldhdr, lsec->contents);
@@ -4070,6 +4063,7 @@ bfd_xcoff_build_dynamic_sections (bfd *output_bfd,
       sec->contents = bfd_zalloc (output_bfd, sec->size);
       if (sec->contents == NULL)
 	return false;
+      sec->alloced = 1;
     }
   sec = xcoff_hash_table (info)->toc_section;
   if (sec->size > 0)
@@ -4077,6 +4071,7 @@ bfd_xcoff_build_dynamic_sections (bfd *output_bfd,
       sec->contents = bfd_zalloc (output_bfd, sec->size);
       if (sec->contents == NULL)
 	return false;
+      sec->alloced = 1;
     }
   sec = xcoff_hash_table (info)->descriptor_section;
   if (sec->size > 0)
@@ -4084,6 +4079,7 @@ bfd_xcoff_build_dynamic_sections (bfd *output_bfd,
       sec->contents = bfd_zalloc (output_bfd, sec->size);
       if (sec->contents == NULL)
 	return false;
+      sec->alloced = 1;
     }
 
   /* Now that we've done garbage collection, decide which symbols to keep,
@@ -4939,7 +4935,7 @@ bfd_xcoff_build_stubs (struct bfd_link_info *info)
       stub_sec->contents = bfd_zalloc (htab->params->stub_bfd, size);
       if (stub_sec->contents == NULL && size != 0)
 	return false;
-
+      stub_sec->alloced = 1;
     }
 
   /* Build the stubs as directed by the stub hash table.  */
@@ -5097,7 +5093,7 @@ xcoff_create_ldrel (bfd *output_bfd, struct xcoff_final_link_info *flinfo,
       ldrel.l_symndx = h->ldindx;
     }
   else
-    ldrel.l_symndx = -(bfd_size_type) 1;
+    abort ();
 
   ldrel.l_rtype = (irel->r_size << 8) | irel->r_type;
   ldrel.l_rsecnm = output_section->target_index;

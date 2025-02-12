@@ -18,8 +18,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef NAT_LOONGARCH_LINUX_HW_POINT_H
-#define NAT_LOONGARCH_LINUX_HW_POINT_H
+#ifndef GDB_NAT_LOONGARCH_LINUX_HW_POINT_H
+#define GDB_NAT_LOONGARCH_LINUX_HW_POINT_H
 
 #include "gdbsupport/break-common.h" /* For enum target_hw_bp_type.  */
 
@@ -109,18 +109,8 @@ void loongarch_linux_set_debug_regs (struct loongarch_debug_reg_state *state,
 void loongarch_linux_get_debug_reg_capacity (int tid);
 
 /* Return the debug register state for process PID.  If no existing
-   state is found for this process, return nullptr.  */
-
-struct loongarch_debug_reg_state *loongarch_lookup_debug_reg_state (pid_t pid);
-
-/* Return the debug register state for process PID.  If no existing
    state is found for this process, create new state.  */
 
 struct loongarch_debug_reg_state *loongarch_get_debug_reg_state (pid_t pid);
 
-/* Remove any existing per-process debug state for process PID.  */
-
-void loongarch_remove_debug_reg_state (pid_t pid);
-
-
-#endif /* NAT_LOONGARCH_LINUX_HW_POINT_H */
+#endif /* GDB_NAT_LOONGARCH_LINUX_HW_POINT_H */

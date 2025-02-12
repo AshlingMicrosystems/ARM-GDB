@@ -19,6 +19,9 @@ SYMBOL TABLE:
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zaamo1p0_zacas1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_a2p1_zaamo1p0_zalrsc1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_zve32x1p0_zvl32b1p0_xsfvcp1p0
+[0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_zve32x1p0_zvl128b1p0_zvl256b1p0_zvl32b1p0_zvl64b1p0_xsfvqmaccqoq1p0
+[0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_zve32x1p0_zvl128b1p0_zvl32b1p0_zvl64b1p0_xsfvqmaccdod1p0
+[0-9a-f]+ l       .text	0+000 \$xrv32i2p1_f2p2_zicsr2p0_zve32f1p0_zve32x1p0_zvl32b1p0_xsfvfnrclipxfqf1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_f2p2_d2p2_v1p0_zicsr2p0_zve32f1p0_zve32x1p0_zve64d1p0_zve64f1p0_zve64x1p0_zvl128b1p0_zvl32b1p0_zvl64b1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_f2p2_zicsr2p0_zfhmin1p0_zve32f1p0_zve32x1p0_zvfh1p0_zvfhmin1p0_zvl32b1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_f2p2_zicsr2p0_zve32f1p0_zve32x1p0_zvfhmin1p0_zvl32b1p0
@@ -45,6 +48,9 @@ SYMBOL TABLE:
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_f2p2_zicsr2p0_zca1p0_zcf1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zca1p0_zcmp1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zca1p0_zcmop1p0
+[0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_zca1p0_zcmt1p0
+[0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicfilp1p0_zicsr2p0
+[0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicfiss1p0_zicsr2p0_zimop1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_h1p0_zicsr2p0_shcounterenw1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_h1p0_zicsr2p0_shgatpa1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_h1p0_zicsr2p0_shtvala1p0
@@ -80,6 +86,7 @@ SYMBOL TABLE:
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_smcntrpmf1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_smstateen1p0_ssstateen1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_smepmp1p0
+[0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_smdbltrp1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_ssaia1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_sscsrind1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_sscofpmf1p0
@@ -89,6 +96,7 @@ SYMBOL TABLE:
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_sstvala1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_sstvecd1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_ssu64xl1p0
+[0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_ssdbltrp1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_svade1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_svadu1p0
 [0-9a-f]+ l       .text	0+000 \$xrv32i2p1_zicsr2p0_svbare1p0

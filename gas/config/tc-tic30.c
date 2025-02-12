@@ -1,5 +1,5 @@
 /* tc-c30.c -- Assembly code for the Texas Instruments TMS320C30
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
    Contributed by Steven Haworth (steve@pm.cse.rmit.edu.au)
 
    This file is part of GAS, the GNU Assembler.
@@ -180,7 +180,7 @@ md_begin (void)
 	if (ISALPHA (c) || c == '_' || c == '.' || ISDIGIT (c))
 	  identifier_chars[c] = c;
 
-	if (c == ' ' || c == '\t')
+	if (is_whitespace (c))
 	  space_chars[c] = c;
 
 	if (c == '_')
@@ -1367,9 +1367,8 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixP)
 #undef MAP
 #undef F
 
-  rel = XNEW (arelent);
-  gas_assert (rel != 0);
-  rel->sym_ptr_ptr = XNEW (asymbol *);
+  rel = notes_alloc (sizeof (arelent));
+  rel->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *rel->sym_ptr_ptr = symbol_get_bfdsym (fixP->fx_addsy);
   rel->address = fixP->fx_frag->fr_address + fixP->fx_where;
   rel->addend = 0;

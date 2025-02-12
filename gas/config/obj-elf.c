@@ -1,5 +1,5 @@
 /* ELF object file format
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -55,10 +55,6 @@
 
 #ifdef TC_MEP
 #include "elf/mep.h"
-#endif
-
-#ifdef TC_NIOS2
-#include "elf/nios2.h"
 #endif
 
 #ifdef TC_PRU
@@ -809,7 +805,7 @@ change_section (const char *name,
 	= match_p->linked_to_symbol_name;
 
       bfd_set_section_flags (sec, flags);
-      if (flags & SEC_MERGE)
+      if (flags & (SEC_MERGE | SEC_STRINGS))
 	sec->entsize = entsize;
       elf_group_name (sec) = match_p->group_name;
 
@@ -864,7 +860,8 @@ change_section (const char *name,
 	       processor or application specific attribute as suspicious?  */
 	    elf_section_flags (sec) = attr;
 
-	  if ((flags & SEC_MERGE) && old_sec->entsize != (unsigned) entsize)
+	  if ((flags & (SEC_MERGE | SEC_STRINGS))
+	      && old_sec->entsize != (unsigned) entsize)
 	    as_bad (_("changed section entity size for %s"), name);
 	}
     }
@@ -1092,7 +1089,7 @@ obj_elf_section_name (void)
     {
       char *end = input_line_pointer;
 
-      while (0 == strchr ("\n\t,; ", *end))
+      while (!is_whitespace (*end) && !is_end_of_stmt (*end) && *end != ',')
 	end++;
       if (end == input_line_pointer)
 	{
@@ -1318,33 +1315,63 @@ obj_elf_section (int push)
 	    }
 
 	  SKIP_WHITESPACE ();
-	  if ((attr & SHF_MERGE) != 0 && *input_line_pointer == ',')
+	  if ((attr & (SHF_MERGE | SHF_STRINGS)) != 0
+	      && *input_line_pointer == ',')
 	    {
 	      ++input_line_pointer;
 	      SKIP_WHITESPACE ();
 	      if (inherit && *input_line_pointer == ','
-		  && (bfd_section_flags (now_seg) & SEC_MERGE) != 0)
+		  && (bfd_section_flags (now_seg)
+		      & (SEC_MERGE | SEC_STRINGS)) != 0)
 		goto fetch_entsize;
-	      entsize = get_absolute_expression ();
-	      SKIP_WHITESPACE ();
-	      if (entsize < 0)
+	      if (is_end_of_line[(unsigned char) *input_line_pointer])
 		{
-		  as_warn (_("invalid merge entity size"));
-		  attr &= ~SHF_MERGE;
-		  entsize = 0;
+		  /* ??? This is here for older versions of gcc that
+		     test for gas string merge support with
+		     '.section .rodata.str, "aMS", @progbits, 1'
+		     Unfortunately '@' begins a comment on arm.
+		     This isn't as_warn because gcc tests with
+		     --fatal-warnings. */
+		  as_tsktsk (_("missing merge / string entity size, 1 assumed"));
+		  entsize = 1;
+		}
+	      else
+		{
+		  entsize = get_absolute_expression ();
+		  SKIP_WHITESPACE ();
+		  if (entsize <= 0)
+		    {
+		      as_warn (_("invalid merge / string entity size"));
+		      attr &= ~(SHF_MERGE | SHF_STRINGS);
+		      entsize = 0;
+		    }
 		}
 	    }
-	  else if ((attr & SHF_MERGE) != 0 && inherit
-		    && (bfd_section_flags (now_seg) & SEC_MERGE) != 0)
+	  else if ((attr & (SHF_MERGE | SHF_STRINGS)) != 0 && inherit
+		    && (bfd_section_flags (now_seg)
+			& (SEC_MERGE | SEC_STRINGS)) != 0)
 	    {
 	    fetch_entsize:
 	      entsize = now_seg->entsize;
 	    }
 	  else if ((attr & SHF_MERGE) != 0)
 	    {
+	      /* ??? Perhaps we should error here.  The manual says that
+		 entsize must be specified if SHF_MERGE is set.  */
 	      as_warn (_("entity size for SHF_MERGE not specified"));
-	      attr &= ~SHF_MERGE;
+	      attr &= ~(SHF_MERGE | SHF_STRINGS);
 	    }
+	  else if ((attr & SHF_STRINGS) != 0)
+	    {
+	      /* Ideally we would warn about this, but older versions
+		 of gas did not permit an entity size to be specified,
+		 so we have to default this silently for
+		 compatibility.  */
+	      entsize = 1;
+	    }
+
+	  if ((attr & (SHF_MERGE | SHF_STRINGS)) != 0 && type == SHT_NOBITS)
+	    as_warn (_("bogus SHF_MERGE / SHF_STRINGS for SHT_NOBITS section"));
 
 	  if ((attr & SHF_LINK_ORDER) != 0 && *input_line_pointer == ',')
 	    {
@@ -1367,7 +1394,8 @@ obj_elf_section (int push)
 		  (void) restore_line_pointer (c);
 		  length = input_line_pointer - beg;
 		  if (length)
-		    match.linked_to_symbol_name = xmemdup0 (beg, length);
+		    match.linked_to_symbol_name
+		      = notes_memdup (beg, length, length + 1);
 		}
 	    }
 	  else if ((attr & SHF_LINK_ORDER) != 0 && inherit
@@ -1808,9 +1836,8 @@ obj_elf_find_and_add_versioned_name (const char *version_name,
       return versioned_name;
 
   /* Add this versioned name to the head of the list,  */
-  versioned_name = (struct elf_versioned_name_list *)
-    xmalloc (sizeof (*versioned_name));
-  versioned_name->name = xstrdup (version_name);
+  versioned_name = notes_alloc (sizeof (*versioned_name));
+  versioned_name->name = notes_strdup (version_name);
   versioned_name->next = sy_obj->versioned_name;
   sy_obj->versioned_name = versioned_name;
 
@@ -1954,8 +1981,8 @@ obj_elf_get_vtable_inherit (void)
     ++input_line_pointer;
 
   if (input_line_pointer[0] == '0'
-      && (input_line_pointer[1] == '\0'
-	  || ISSPACE (input_line_pointer[1])))
+      && (is_end_of_stmt (input_line_pointer[1])
+	  || is_whitespace (input_line_pointer[1])))
     {
       psym = section_symbol (absolute_section);
       ++input_line_pointer;
@@ -2029,7 +2056,7 @@ obj_elf_vtable_entry (int ignore ATTRIBUTE_UNUSED)
   (void) obj_elf_get_vtable_entry ();
 }
 
-#define skip_whitespace(str)  do { if (*(str) == ' ') ++(str); } while (0)
+#define skip_whitespace(str)  do { if (is_whitespace (*(str))) ++(str); } while (0)
 
 static inline int
 skip_past_char (char ** str, char c)
@@ -3073,6 +3100,7 @@ elf_frob_file_after_relocs (void)
       subseg_set (group, 0);
       bfd_set_section_size (group, size);
       group->contents = (unsigned char *) frag_more (size);
+      group->alloced = 1;
       frag_now->fr_fix = frag_now_fix_octets ();
       frag_wane (frag_now);
     }

@@ -1,4 +1,4 @@
-/* Copyright (C) 2021-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Oracle.
 
    This file is part of GNU Binutils.
@@ -21,7 +21,9 @@
 #if defined(__i386__) || defined(__x86_64)
 #include <cpuid.h>  /* GCC-provided */
 #elif defined(__aarch64__)
+#if !defined(ATTRIBUTE_UNUSED)
 #define ATTRIBUTE_UNUSED __attribute__((unused))
+#endif
 
 static inline uint_t __attribute_const__
 __get_cpuid (unsigned int op ATTRIBUTE_UNUSED, unsigned int *eax,

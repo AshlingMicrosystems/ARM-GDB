@@ -1,5 +1,5 @@
 /* tc-mmix.c -- Assembler for Don Knuth's MMIX.
-   Copyright (C) 2001-2024 Free Software Foundation, Inc.
+   Copyright (C) 2001-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -441,16 +441,6 @@ mmix_fill_nops (char *opcodep, int n)
     md_number_to_chars (opcodep + i * 4, SWYM_INSN_BYTE << 24, 4);
 }
 
-/* See macro md_parse_name in tc-mmix.h.  */
-
-int
-mmix_current_location (void (*fn) (expressionS *), expressionS *exp)
-{
-  (*fn) (exp);
-
-  return 1;
-}
-
 /* Get up to three operands, filling them into the exp array.
    General idea and code stolen from the tic80 port.  */
 
@@ -464,11 +454,11 @@ get_operands (int max_operands, char *s, expressionS *exp)
   while (nextchar == ',')
     {
       /* Skip leading whitespace */
-      while (*p == ' ' || *p == '\t')
+      while (is_whitespace (*p))
 	p++;
 
       /* Check to see if we have any operands left to parse */
-      if (*p == 0 || *p == '\n' || *p == '\r')
+      if (is_end_of_stmt (*p))
 	{
 	  break;
 	}
@@ -499,7 +489,7 @@ get_operands (int max_operands, char *s, expressionS *exp)
       p = input_line_pointer;
 
       /* Skip leading whitespace */
-      while (*p == ' ' || *p == '\t')
+      while (is_whitespace (*p))
 	p++;
       nextchar = *p++;
     }
@@ -555,7 +545,7 @@ get_putget_operands (struct mmix_opcode *insn, char *operands,
   int regno;
 
   /* Skip leading whitespace */
-  while (*p == ' ' || *p == '\t')
+  while (is_whitespace (*p))
     p++;
 
   input_line_pointer = p;
@@ -575,7 +565,7 @@ get_putget_operands (struct mmix_opcode *insn, char *operands,
       p = input_line_pointer;
 
       /* Skip whitespace */
-      while (*p == ' ' || *p == '\t')
+      while (is_whitespace (*p))
 	p++;
 
       if (*p == ',')
@@ -583,7 +573,7 @@ get_putget_operands (struct mmix_opcode *insn, char *operands,
 	  p++;
 
 	  /* Skip whitespace */
-	  while (*p == ' ' || *p == '\t')
+	  while (is_whitespace (*p))
 	    p++;
 	  sregp = p;
 	  input_line_pointer = sregp;
@@ -604,7 +594,7 @@ get_putget_operands (struct mmix_opcode *insn, char *operands,
       p = input_line_pointer;
 
       /* Skip whitespace */
-      while (*p == ' ' || *p == '\t')
+      while (is_whitespace (*p))
 	p++;
 
       if (*p == ',')
@@ -612,7 +602,7 @@ get_putget_operands (struct mmix_opcode *insn, char *operands,
 	  p++;
 
 	  /* Skip whitespace */
-	  while (*p == ' ' || *p == '\t')
+	  while (is_whitespace (*p))
 	    p++;
 
 	  input_line_pointer = p;
@@ -839,7 +829,7 @@ md_assemble (char *str)
        ++operands)
     ;
 
-  if (ISSPACE (*operands))
+  if (is_whitespace (*operands))
     {
       modified_char = *operands;
       *operands++ = '\0';
@@ -2888,9 +2878,8 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixP)
       return NULL;
     }
 
-  relP = XNEW (arelent);
-  gas_assert (relP != 0);
-  relP->sym_ptr_ptr = XNEW (asymbol *);
+  relP = notes_alloc (sizeof (arelent));
+  relP->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *relP->sym_ptr_ptr = baddsy;
   relP->address = fixP->fx_frag->fr_address + fixP->fx_where;
 
@@ -2935,7 +2924,11 @@ mmix_handle_mmixal (void)
   /* If we're on a line with a label, check if it's a mmixal fb-label.
      Save an indicator and skip the label; it must be set only after all
      fb-labels of expressions are evaluated.  */
-  if (ISDIGIT (s[0]) && s[1] == 'H' && ISSPACE (s[2]))
+  if (ISDIGIT (s[0]) && s[1] == 'H'
+      /* A lone "1H" on a line is valid: we'll then see is_end_of_stmt()
+	 being true for the following character (likely a '\n' but '\n'
+	 doesn't count as is_whitespace).  */
+      && (is_whitespace (s[2]) || is_end_of_stmt (s[2])))
     {
       current_fb_label = s[0] - '0';
 
@@ -2946,12 +2939,12 @@ mmix_handle_mmixal (void)
       s += 2;
       input_line_pointer = s;
 
-      while (*s && ISSPACE (*s) && ! is_end_of_line[(unsigned int) *s])
+      while (is_whitespace (*s))
 	s++;
 
       /* For errors emitted here, the book-keeping is off by one; the
 	 caller is about to bump the counters.  Adjust the error messages.  */
-      if (is_end_of_line[(unsigned int) *s])
+      if (is_end_of_stmt (*s))
 	{
 	  unsigned int line;
 	  const char * name = as_where (&line);
@@ -2984,7 +2977,7 @@ mmix_handle_mmixal (void)
       return;
     }
 
-  if (*s == 0 || is_end_of_line[(unsigned int) *s])
+  if (is_end_of_stmt (*s))
     /* We avoid handling empty lines here.  */
     return;
 
@@ -2997,9 +2990,7 @@ mmix_handle_mmixal (void)
 
   /* Find the start of the instruction or pseudo following the label,
      if there is one.  */
-  for (insn = s;
-       *insn && ISSPACE (*insn) && ! is_end_of_line[(unsigned int) *insn];
-       insn++)
+  for (insn = s; is_whitespace (*insn); insn++)
     /* Empty */
     ;
 
@@ -3014,7 +3005,7 @@ mmix_handle_mmixal (void)
 	      instruction or MMIXAL-pseudo (getting its alignment).  Thus
 	      is acts like a "normal" :-ended label.  Ditto if it's
 	      followed by a non-MMIXAL pseudo.  */
-	   && !is_end_of_line[(unsigned int) *insn]
+	   && !is_end_of_stmt (*insn)
 	   && *insn != '.')
     {
       /* For labels that don't end in ":", we save it so we can later give
@@ -3049,7 +3040,7 @@ mmix_handle_mmixal (void)
   while (*s)
     {
       c = *s++;
-      if (is_end_of_line[(unsigned int) c])
+      if (is_end_of_stmt (c))
 	break;
       if (c == MAGIC_FB_BACKWARD_CHAR || c == MAGIC_FB_FORWARD_CHAR)
 	as_bad (_("invalid characters in input"));
@@ -3059,34 +3050,24 @@ mmix_handle_mmixal (void)
   s = insn;
 
   /* Skip the insn.  */
-  while (*s
-	 && ! ISSPACE (*s)
-	 && *s != ';'
-	 && ! is_end_of_line[(unsigned int) *s])
+  while (! is_whitespace (*s) && ! is_end_of_stmt (*s))
     s++;
 
   /* Skip the spaces after the insn.  */
-  while (*s
-	 && ISSPACE (*s)
-	 && *s != ';'
-	 && ! is_end_of_line[(unsigned int) *s])
+  while (is_whitespace (*s))
     s++;
 
   /* Skip the operands.  While doing this, replace [0-9][BF] with
      (MAGIC_FB_BACKWARD_CHAR|MAGIC_FB_FORWARD_CHAR)[0-9].  */
-  while ((c = *s) != 0
-	 && ! ISSPACE (c)
-	 && c != ';'
-	 && ! is_end_of_line[(unsigned int) c])
+  while (! is_whitespace (c = *s) && ! is_end_of_stmt (c))
     {
       if (c == '"')
 	{
 	  s++;
 
 	  /* FIXME: Test-case for semi-colon in string.  */
-	  while (*s
-		 && *s != '"'
-		 && (! is_end_of_line[(unsigned int) *s] || *s == ';'))
+	  while (*s != '"'
+		 && (! is_end_of_stmt (*s) || *s == ';'))
 	    s++;
 
 	  if (*s == '"')
@@ -3112,10 +3093,7 @@ mmix_handle_mmixal (void)
     }
 
   /* Skip any spaces after the operands.  */
-  while (*s
-	 && ISSPACE (*s)
-	 && *s != ';'
-	 && !is_end_of_line[(unsigned int) *s])
+  while (is_whitespace (*s))
     s++;
 
   /* If we're now looking at a semi-colon, then it's an end-of-line
@@ -3125,7 +3103,8 @@ mmix_handle_mmixal (void)
   /* Make IS into an EQU by replacing it with "= ".  Only match upper-case
      though; let lower-case be a syntax error.  */
   s = insn;
-  if (s[0] == 'I' && s[1] == 'S' && ISSPACE (s[2]))
+  if (s[0] == 'I' && s[1] == 'S'
+      && (is_whitespace (s[2]) || is_end_of_stmt (s[2])))
     {
       *s = '=';
       s[1] = ' ';
@@ -3174,7 +3153,7 @@ mmix_handle_mmixal (void)
   else if (s[0] == 'G'
 	   && s[1] == 'R'
 	   && startswith (s, "GREG")
-	   && (ISSPACE (s[4]) || is_end_of_line[(unsigned char) s[4]]))
+	   && (is_whitespace (s[4]) || is_end_of_stmt (s[4])))
     {
       input_line_pointer = s + 4;
 
@@ -4269,7 +4248,7 @@ mmix_cons (int nbytes)
 
   SKIP_WHITESPACE ();
 
-  if (is_end_of_line[(unsigned int) *input_line_pointer])
+  if (is_end_of_stmt (*input_line_pointer))
     {
       /* Default to zero if the expression was absent.  */
 

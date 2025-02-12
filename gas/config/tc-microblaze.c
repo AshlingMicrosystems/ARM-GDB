@@ -1,6 +1,6 @@
 /* tc-microblaze.c -- Assemble code for Xilinx MicroBlaze
 
-   Copyright (C) 2009-2024 Free Software Foundation, Inc.
+   Copyright (C) 2009-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -400,7 +400,7 @@ parse_reg (char * s, unsigned * reg)
   unsigned tmpreg = 0;
 
   /* Strip leading whitespace.  */
-  while (ISSPACE (* s))
+  while (is_whitespace (* s))
     ++ s;
 
   if (strncasecmp (s, "rpc", 3) == 0)
@@ -573,7 +573,7 @@ parse_exp (char *s, expressionS *e)
   char *new_pointer;
 
   /* Skip whitespace.  */
-  while (ISSPACE (* s))
+  while (is_whitespace (* s))
     ++ s;
 
   save = input_line_pointer;
@@ -892,12 +892,12 @@ md_assemble (char * str)
   char name[20];
 
   /* Drop leading whitespace.  */
-  while (ISSPACE (* str))
+  while (is_whitespace (* str))
     str ++;
 
   /* Find the op code end.  */
   for (op_start = op_end = str;
-       *op_end && !is_end_of_line[(unsigned char) *op_end] && *op_end != ' ';
+       !is_end_of_stmt (*op_end) && !is_whitespace (*op_end);
        op_end++)
     {
       name[nlen] = op_start[nlen];
@@ -1808,7 +1808,7 @@ md_assemble (char * str)
     }
 
   /* Drop whitespace after all the operands have been parsed.  */
-  while (ISSPACE (* op_end))
+  while (is_whitespace (* op_end))
     op_end ++;
 
   /* Give warning message if the insn has more operands than required.  */
@@ -2533,8 +2533,8 @@ tc_gen_reloc (asection * section ATTRIBUTE_UNUSED, fixS * fixp)
       break;
     }
 
-  rel = XNEW (arelent);
-  rel->sym_ptr_ptr = XNEW (asymbol *);
+  rel = notes_alloc (sizeof (arelent));
+  rel->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
 
   if (code == BFD_RELOC_MICROBLAZE_32_SYM_OP_SYM)
     *rel->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_subsy);

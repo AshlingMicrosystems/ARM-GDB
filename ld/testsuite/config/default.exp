@@ -1,5 +1,5 @@
 # Basic expect script for LD Regression Tests
-#   Copyright (C) 1993-2024 Free Software Foundation, Inc.
+#   Copyright (C) 1993-2025 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -382,6 +382,14 @@ if { ![info exists NO_DT_RELR_CC_LDFLAGS] } then {
     }
 }
 
+if { ![info exists NO_MEMORY_SEAL_LDFLAGS] } then {
+    if { [check_memory_seal_support] } then {
+	set NO_MEMORY_SEAL_LDFLAGS "-z nomemory-seal"
+    } else {
+	set NO_MEMORY_SEAL_LDFLAGS {}
+    }
+}
+
 # Set LD_CLASS to "64bit" for a 64-bit *host* linker.
 if { ![info exists LD_CLASS] } then {
     set REAL_LD [findfile $base_dir/.libs/ld-new .libs/ld-new $LD [transform ld]]
@@ -414,7 +422,7 @@ proc compiler_supports { flag args } {
 	}
 	close $f
 	set rfn [remote_download host $fn]
-	set avail [run_host_cmd_yesno "$CC_FOR_TARGET" "$flags $flag $rfn -o $rfno"]
+	set avail [run_host_noleak "$CC_FOR_TARGET" "$flags $flag $rfn -o $rfno"]
 	remote_file host delete $rfno
 	remote_file host delete $rfn
 	file delete $fn

@@ -27,6 +27,7 @@
 #include "gdbsupport/environ.h"
 #include "value.h"
 #include "cli/cli-cmds.h"
+#include "cli/cli-style.h"
 #include "symfile.h"
 #include "gdbcore.h"
 #include "target.h"
@@ -516,12 +517,6 @@ run_command (const char *args, int from_tty)
 static void
 start_command (const char *args, int from_tty)
 {
-  /* Some languages such as Ada need to search inside the program
-     minimal symbols for the location where to put the temporary
-     breakpoint before starting.  */
-  if (!have_minimal_symbols (current_program_space))
-    error (_("No symbol table loaded.  Use the \"file\" command."));
-
   /* Run the program until reaching the main procedure...  */
   run_command_1 (args, from_tty, RUN_STOP_AT_MAIN);
 }
@@ -1999,10 +1994,9 @@ info_program_command (const char *args, int from_tty)
     }
 
   if (from_tty)
-    {
-      gdb_printf (_("Type \"info stack\" or \"info "
-		    "registers\" for more information.\n"));
-    }
+    gdb_printf (_("Type \"%ps\" or \"%ps\" for more information.\n"),
+		styled_string (command_style.style (), "info stack"),
+		styled_string (command_style.style (), "info registers"));
 }
 
 static void
@@ -2880,7 +2874,7 @@ stop_current_target_threads_ns (ptid_t ptid)
      all-stop mode, we will only get one stop event --- it's undefined
      which thread will report the event.  */
   set_stop_requested (current_inferior ()->process_target (),
-		      ptid, 1);
+		      ptid, true);
 }
 
 /* See inferior.h.  */

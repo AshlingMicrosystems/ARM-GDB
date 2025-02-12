@@ -1,5 +1,5 @@
 /* tc-s12z.c -- Assembler code for the Freescale S12Z
-   Copyright (C) 2018-2024 Free Software Foundation, Inc.
+   Copyright (C) 2018-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -207,7 +207,7 @@ s12z_init_after_args (void)
 static char *
 skip_whites (char *p)
 {
-  while (*p == ' ' || *p == '\t')
+  while (is_whitespace (*p))
     p++;
 
   return p;
@@ -347,7 +347,7 @@ static bool
 lex_match_string (const char *s)
 {
   char *p = input_line_pointer;
-  while (p != 0 && *p != '\t' && *p != ' ' && *p != '\0')
+  while (p != 0 && !is_whitespace (*p) && !is_end_of_stmt (*p))
     {
       p++;
     }
@@ -3790,7 +3790,7 @@ md_assemble (char *str)
   /* Find the opcode end and get the opcode in 'name'.  The opcode is forced
      lower case (the opcode table only has lower case op-codes).  */
   for (op_start = op_end = str;
-       *op_end && !is_end_of_line[(int)*op_end] && *op_end != ' ';
+       !is_end_of_stmt (*op_end) && !is_whitespace (*op_end);
        op_end++)
     {
       name[nlen] = TOLOWER (op_start[nlen]);
@@ -3884,8 +3884,10 @@ md_estimate_size_before_relax (fragS *fragP ATTRIBUTE_UNUSED, asection *segment 
 arelent *
 tc_gen_reloc (asection *section, fixS *fixp)
 {
-  arelent *reloc = XNEW (arelent);
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
+  arelent *reloc;
+
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
   reloc->howto = bfd_reloc_type_lookup (stdoutput, fixp->fx_r_type);

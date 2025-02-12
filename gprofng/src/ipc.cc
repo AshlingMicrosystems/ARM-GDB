@@ -1,4 +1,4 @@
-/* Copyright (C) 2021-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Oracle.
 
    This file is part of GNU Binutils.
@@ -2534,8 +2534,10 @@ ipc_doWork (void *arg)
     }
   else
     {
-      ipc_log ("Unrecognized input cmd \"%s\"; Aborting.\n", inp);
-      return 1;
+      char *s = dbe_sprintf ("Unrecognized request: \"%s\"", inp);
+      ipc_log ("%s\n", s);
+      writeError (s, req);
+      free (s);
     }
   ipc_log ("  processing IPC command %s complete\n", inp);
   free (inp);

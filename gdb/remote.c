@@ -39,6 +39,7 @@
 #include "solib.h"
 #include "cli/cli-decode.h"
 #include "cli/cli-setshow.h"
+#include "cli/cli-style.h"
 #include "target-descriptions.h"
 #include "gdb_bfd.h"
 #include "gdbsupport/filestuff.h"
@@ -232,6 +233,7 @@ private:
 enum {
   PACKET_vCont = 0,
   PACKET_X,
+  PACKET_x,
   PACKET_qSymbol,
   PACKET_P,
   PACKET_p,
@@ -464,7 +466,7 @@ struct packet_reg
   long offset; /* Offset into G packet.  */
   long regnum; /* GDB's internal register number.  */
   LONGEST pnum; /* Remote protocol register number.  */
-  int in_g_packet; /* Always part of G packet.  */
+  bool in_g_packet; /* Always part of G packet.  */
   /* long size in bytes;  == register_size (arch, regnum);
      at present.  */
   /* char *name; == gdbarch_register_name (arch, regnum);
@@ -1922,7 +1924,7 @@ map_regcache_remote_table (struct gdbarch *gdbarch, struct packet_reg *regs)
 
   for (regnum = 0, offset = 0; regnum < num_remote_regs; regnum++)
     {
-      remote_regs[regnum]->in_g_packet = 1;
+      remote_regs[regnum]->in_g_packet = true;
       remote_regs[regnum]->offset = offset;
       offset += register_size (gdbarch, remote_regs[regnum]->regnum);
     }
@@ -5845,6 +5847,7 @@ static const struct protocol_feature remote_protocol_features[] = {
     PACKET_memory_tagging_feature },
   { "error-message", PACKET_ENABLE, remote_supported_packet,
     PACKET_accept_error_message },
+  { "binary-upload", PACKET_DISABLE, remote_supported_packet, PACKET_x },
 };
 
 static char *remote_support_xml;
@@ -8222,16 +8225,15 @@ Packet: '%s'\n"),
 Packet: '%s'\n"),
 			   hex_string (pnum), p, buf);
 
+		  int reg_size = register_size (event->arch, reg->regnum);
 		  cached_reg.num = reg->regnum;
-		  cached_reg.data.reset ((gdb_byte *)
-					 xmalloc (register_size (event->arch,
-								 reg->regnum)));
+		  cached_reg.data.resize (reg_size);
 
 		  p = p1 + 1;
-		  fieldsize = hex2bin (p, cached_reg.data.get (),
-				       register_size (event->arch, reg->regnum));
+		  fieldsize = hex2bin (p, cached_reg.data.data (),
+				       cached_reg.data.size ());
 		  p += 2 * fieldsize;
-		  if (fieldsize < register_size (event->arch, reg->regnum))
+		  if (fieldsize < reg_size)
 		    warning (_("Remote reply is too short: %s"), buf);
 
 		  event->regcache.push_back (std::move (cached_reg));
@@ -8570,7 +8572,7 @@ remote_target::process_stop_reply (stop_reply_up stop_reply,
 
 	  for (cached_reg_t &reg : stop_reply->regcache)
 	    {
-	      regcache->raw_supply (reg.num, reg.data.get ());
+	      regcache->raw_supply (reg.num, reg.data);
 	      rs->last_seen_expedited_registers.insert (reg.num);
 	    }
 	}
@@ -8996,11 +8998,11 @@ remote_target::process_g_packet (struct regcache *regcache)
 	    continue;
 
 	  if (offset >= sizeof_g_packet)
-	    rsa->regs[i].in_g_packet = 0;
+	    rsa->regs[i].in_g_packet = false;
 	  else if (offset + reg_size > sizeof_g_packet)
 	    error (_("Truncated register %d in remote 'g' packet"), i);
 	  else
-	    rsa->regs[i].in_g_packet = 1;
+	    rsa->regs[i].in_g_packet = true;
 	}
 
       /* Looks valid enough, we can assume this is the correct length
@@ -9668,7 +9670,6 @@ remote_target::remote_read_bytes_1 (CORE_ADDR memaddr, gdb_byte *myaddr,
 {
   struct remote_state *rs = get_remote_state ();
   int buf_size_bytes;		/* Max size of packet output buffer.  */
-  char *p;
   int todo_units;
   int decoded_bytes;
 
@@ -9680,23 +9681,79 @@ remote_target::remote_read_bytes_1 (CORE_ADDR memaddr, gdb_byte *myaddr,
   todo_units = std::min (len_units,
 			 (ULONGEST) (buf_size_bytes / unit_size) / 2);
 
-  /* Construct "m"<memaddr>","<len>".  */
   memaddr = remote_address_masked (memaddr);
-  p = rs->buf.data ();
-  *p++ = 'm';
-  p += hexnumstr (p, (ULONGEST) memaddr);
-  *p++ = ',';
-  p += hexnumstr (p, (ULONGEST) todo_units);
-  *p = '\0';
-  putpkt (rs->buf);
-  getpkt (&rs->buf);
+
+  /* Construct "m/x"<memaddr>","<len>".  */
+  auto send_request = [this, rs, memaddr, todo_units] (char format) -> void
+    {
+      char *buffer = rs->buf.data ();
+      *buffer++ = format;
+      buffer += hexnumstr (buffer, (ULONGEST) memaddr);
+      *buffer++ = ',';
+      buffer += hexnumstr (buffer, (ULONGEST) todo_units);
+      *buffer = '\0';
+      putpkt (rs->buf);
+    };
+
+  /* Determine which packet format to use.  The target's support for
+     'x' may be unknown.  We just try.  If it doesn't work, we try
+     again using 'm'.  */
+  char packet_format;
+  if (m_features.packet_support (PACKET_x) == PACKET_DISABLE)
+    packet_format = 'm';
+  else
+    packet_format = 'x';
+
+  send_request (packet_format);
+  int packet_len = getpkt (&rs->buf);
+  if (packet_len < 0)
+    return TARGET_XFER_E_IO;
+
+  if (m_features.packet_support (PACKET_x) == PACKET_SUPPORT_UNKNOWN)
+    {
+      if (rs->buf[0] == '\0')
+	{
+	  remote_debug_printf ("binary uploading NOT supported by target");
+	  m_features.m_protocol_packets[PACKET_x].support = PACKET_DISABLE;
+
+	  /* Try again using 'm'.  */
+	  packet_format = 'm';
+	  send_request (packet_format);
+	  packet_len = getpkt (&rs->buf);
+	  if (packet_len < 0)
+	    return TARGET_XFER_E_IO;
+	}
+      else
+	{
+	  remote_debug_printf ("binary uploading supported by target");
+	  m_features.m_protocol_packets[PACKET_x].support = PACKET_ENABLE;
+	}
+    }
+
   packet_result result = packet_check_result (rs->buf);
   if (result.status () == PACKET_ERROR)
     return TARGET_XFER_E_IO;
-  /* Reply describes memory byte by byte, each byte encoded as two hex
-     characters.  */
-  p = rs->buf.data ();
-  decoded_bytes = hex2bin (p, myaddr, todo_units * unit_size);
+
+  char *p = rs->buf.data ();
+  if (packet_format == 'x')
+    {
+      if (*p != 'b')
+	return TARGET_XFER_E_IO;
+
+      /* Adjust for 'b'.  */
+      p++;
+      packet_len--;
+      decoded_bytes = remote_unescape_input ((const gdb_byte *) p,
+					     packet_len, myaddr,
+					     todo_units * unit_size);
+    }
+  else
+    {
+      /* Reply describes memory byte by byte, each byte encoded as two hex
+	 characters.  */
+      decoded_bytes = hex2bin (p, myaddr, todo_units * unit_size);
+    }
+
   /* Return what we have.  Let higher layers handle partial reads.  */
   *xfered_len_units = (ULONGEST) (decoded_bytes / unit_size);
   return (*xfered_len_units != 0) ? TARGET_XFER_OK : TARGET_XFER_EOF;
@@ -10482,8 +10539,8 @@ remote_target::getpkt (gdb::char_vector *buf, bool forever, bool *is_notif)
 
 	      if (val > max_chars)
 		remote_debug_printf_nofunc
-		  ("Packet received: %s [%d bytes omitted]", str.c_str (),
-		   val - max_chars);
+		  ("Packet received: %s [%d of %d bytes omitted]", str.c_str (),
+		   val - max_chars, val);
 	      else
 		remote_debug_printf_nofunc ("Packet received: %s",
 					    str.c_str ());
@@ -12814,8 +12871,9 @@ remote_target::remote_hostio_open (inferior *inf, const char *filename,
       if (!warning_issued)
 	{
 	  warning (_("File transfers from remote targets can be slow."
-		     " Use \"set sysroot\" to access files locally"
-		     " instead."));
+		     " Use \"%ps\" to access files locally"
+		     " instead."),
+		   styled_string (command_style.style (), "set sysroot"));
 	  warning_issued = 1;
 	}
     }
@@ -15525,6 +15583,7 @@ show_remote_cmd (const char *args, int from_tty)
   struct ui_out *uiout = current_uiout;
 
   ui_out_emit_tuple tuple_emitter (uiout, "showlist");
+  const ui_file_style cmd_style = command_style.style ();
   for (; list != NULL; list = list->next)
     if (strcmp (list->name, "Z-packet") == 0)
       continue;
@@ -15536,7 +15595,7 @@ show_remote_cmd (const char *args, int from_tty)
       {
 	ui_out_emit_tuple option_emitter (uiout, "option");
 
-	uiout->field_string ("name", list->name);
+	uiout->field_string ("name", list->name, cmd_style);
 	uiout->text (":  ");
 	if (list->type == show_cmd)
 	  do_show_command (NULL, from_tty, list);
@@ -16223,6 +16282,8 @@ Show the maximum size of the address (in bits) in a memory packet."), NULL,
   init_all_packet_configs ();
 
   add_packet_config_cmd (PACKET_X, "X", "binary-download", 1);
+
+  add_packet_config_cmd (PACKET_x, "x", "binary-upload", 0);
 
   add_packet_config_cmd (PACKET_vCont, "vCont", "verbose-resume", 0);
 

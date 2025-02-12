@@ -1,5 +1,5 @@
 /* tc-hppa.c -- Assemble for the PA
-   Copyright (C) 1989-2024 Free Software Foundation, Inc.
+   Copyright (C) 1989-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -1348,17 +1348,12 @@ tc_gen_reloc (asection *section, fixS *fixp)
   int n_relocs;
   int i;
 
-  hppa_fixp = (struct hppa_fix_struct *) fixp->tc_fix_data;
   if (fixp->fx_addsy == 0)
     return &no_relocs;
 
+  hppa_fixp = (struct hppa_fix_struct *) fixp->tc_fix_data;
   gas_assert (hppa_fixp != 0);
   gas_assert (section != 0);
-
-  reloc = XNEW (arelent);
-
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
-  *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
 
   /* Allow fixup_segment to recognize hand-written pc-relative relocations.
      When we went through cons_fix_new_hppa, we classified them as complex.  */
@@ -1388,11 +1383,10 @@ tc_gen_reloc (asection *section, fixS *fixp)
   for (n_relocs = 0; codes[n_relocs]; n_relocs++)
     ;
 
-  relocs = XNEWVEC (arelent *, n_relocs + 1);
-  reloc = XNEWVEC (arelent, n_relocs);
+  relocs = notes_alloc (sizeof (*relocs) * (n_relocs + 1));
+  reloc = notes_alloc (sizeof (*reloc) * n_relocs);
   for (i = 0; i < n_relocs; i++)
     relocs[i] = &reloc[i];
-
   relocs[n_relocs] = NULL;
 
 #ifdef OBJ_ELF
@@ -1447,7 +1441,7 @@ tc_gen_reloc (asection *section, fixS *fixp)
 	  break;
 	}
 
-      reloc->sym_ptr_ptr = XNEW (asymbol *);
+      reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
       *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
       reloc->howto = bfd_reloc_type_lookup (stdoutput,
 					    (bfd_reloc_code_real_type) code);
@@ -1463,7 +1457,7 @@ tc_gen_reloc (asection *section, fixS *fixp)
     {
       code = *codes[i];
 
-      relocs[i]->sym_ptr_ptr = XNEW (asymbol *);
+      relocs[i]->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
       *relocs[i]->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
       relocs[i]->howto =
 	bfd_reloc_type_lookup (stdoutput,
@@ -1477,36 +1471,25 @@ tc_gen_reloc (asection *section, fixS *fixp)
 	     of two symbols.  With that in mind we fill in all four
 	     relocs now and break out of the loop.  */
 	  gas_assert (i == 1);
-	  relocs[0]->sym_ptr_ptr
-	    = (asymbol **) bfd_abs_section_ptr->symbol_ptr_ptr;
-	  relocs[0]->howto
-	    = bfd_reloc_type_lookup (stdoutput,
-				     (bfd_reloc_code_real_type) *codes[0]);
-	  relocs[0]->address = fixp->fx_frag->fr_address + fixp->fx_where;
+	  /* relocs[0] and relocs[1] have been initialised above.  We can
+	     use relocs[0]->sym_ptr_ptr allocation for relocs[2].  */
+	  relocs[2]->sym_ptr_ptr = relocs[0]->sym_ptr_ptr;
+	  relocs[0]->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;
 	  relocs[0]->addend = 0;
-	  relocs[1]->sym_ptr_ptr = XNEW (asymbol *);
-	  *relocs[1]->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
-	  relocs[1]->howto
-	    = bfd_reloc_type_lookup (stdoutput,
-				     (bfd_reloc_code_real_type) *codes[1]);
-	  relocs[1]->address = fixp->fx_frag->fr_address + fixp->fx_where;
 	  relocs[1]->addend = 0;
-	  relocs[2]->sym_ptr_ptr = XNEW (asymbol *);
 	  *relocs[2]->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_subsy);
 	  relocs[2]->howto
 	    = bfd_reloc_type_lookup (stdoutput,
 				     (bfd_reloc_code_real_type) *codes[2]);
 	  relocs[2]->address = fixp->fx_frag->fr_address + fixp->fx_where;
 	  relocs[2]->addend = 0;
-	  relocs[3]->sym_ptr_ptr
-	    = (asymbol **) bfd_abs_section_ptr->symbol_ptr_ptr;
+	  relocs[3]->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;
 	  relocs[3]->howto
 	    = bfd_reloc_type_lookup (stdoutput,
 				     (bfd_reloc_code_real_type) *codes[3]);
 	  relocs[3]->address = fixp->fx_frag->fr_address + fixp->fx_where;
 	  relocs[3]->addend = 0;
-	  relocs[4]->sym_ptr_ptr
-	    = (asymbol **) bfd_abs_section_ptr->symbol_ptr_ptr;
+	  relocs[4]->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;
 	  relocs[4]->howto
 	    = bfd_reloc_type_lookup (stdoutput,
 				     (bfd_reloc_code_real_type) *codes[4]);
@@ -1546,7 +1529,6 @@ tc_gen_reloc (asection *section, fixS *fixp)
 	case R_N0SEL:
 	case R_N1SEL:
 	  /* There is no symbol or addend associated with these fixups.  */
-	  relocs[i]->sym_ptr_ptr = XNEW (asymbol *);
 	  *relocs[i]->sym_ptr_ptr = symbol_get_bfdsym (dummy_symbol);
 	  relocs[i]->addend = 0;
 	  break;
@@ -1555,7 +1537,6 @@ tc_gen_reloc (asection *section, fixS *fixp)
 	case R_ENTRY:
 	case R_EXIT:
 	  /* There is no symbol associated with these fixups.  */
-	  relocs[i]->sym_ptr_ptr = XNEW (asymbol *);
 	  *relocs[i]->sym_ptr_ptr = symbol_get_bfdsym (dummy_symbol);
 	  relocs[i]->addend = fixp->fx_offset;
 	  break;
@@ -2032,7 +2013,7 @@ pa_parse_number (char **s, int is_float)
   bool have_prefix;
 
   /* Skip whitespace before the number.  */
-  while (*p == ' ' || *p == '\t')
+  while (is_whitespace (*p))
     p = p + 1;
 
   pa_number = -1;
@@ -2248,12 +2229,12 @@ pa_parse_fp_cmp_cond (char **s)
 	  *s += strlen (fp_cond_map[i].string);
 	  /* If not a complete match, back up the input string and
 	     report an error.  */
-	  if (**s != ' ' && **s != '\t')
+	  if (!is_whitespace (**s))
 	    {
 	      *s -= strlen (fp_cond_map[i].string);
 	      break;
 	    }
-	  while (**s == ' ' || **s == '\t')
+	  while (is_whitespace (**s))
 	    *s = *s + 1;
 	  return cond;
 	}
@@ -2262,7 +2243,7 @@ pa_parse_fp_cmp_cond (char **s)
   as_bad (_("Invalid FP Compare Condition: %s"), *s);
 
   /* Advance over the bogus completer.  */
-  while (**s != ',' && **s != ' ' && **s != '\t')
+  while (**s != ',' && !is_whitespace (**s))
     *s += 1;
 
   return 0;
@@ -2435,7 +2416,7 @@ pa_chk_field_selector (char **str)
   char *s = *str;
 
   /* Read past any whitespace.  */
-  while (*s == ' ' || *s == '\t')
+  while (is_whitespace (*s))
     s++;
   *str = s;
 
@@ -2566,7 +2547,7 @@ pa_get_number (struct pa_it *insn, char **strp)
      contain no whitespace.  */
 
   s = *strp;
-  while (*s != ',' && *s != ' ' && *s != '\t')
+  while (*s != ',' && !is_whitespace (*s))
     s++;
 
   c = *s;
@@ -2646,7 +2627,7 @@ pa_parse_nonneg_cmpsub_cmpltr (char **s)
   if (**s == ',')
     {
       *s += 1;
-      while (**s != ',' && **s != ' ' && **s != '\t')
+      while (**s != ',' && !is_whitespace (**s))
 	*s += 1;
       c = **s;
       **s = 0x00;
@@ -2716,7 +2697,7 @@ pa_parse_neg_cmpsub_cmpltr (char **s)
   if (**s == ',')
     {
       *s += 1;
-      while (**s != ',' && **s != ' ' && **s != '\t')
+      while (**s != ',' && !is_whitespace (**s))
 	*s += 1;
       c = **s;
       **s = 0x00;
@@ -2791,7 +2772,7 @@ pa_parse_cmpb_64_cmpltr (char **s)
   if (**s == ',')
     {
       *s += 1;
-      while (**s != ',' && **s != ' ' && **s != '\t')
+      while (**s != ',' && !is_whitespace (**s))
 	*s += 1;
       c = **s;
       **s = 0x00;
@@ -2884,7 +2865,7 @@ pa_parse_cmpib_64_cmpltr (char **s)
   if (**s == ',')
     {
       *s += 1;
-      while (**s != ',' && **s != ' ' && **s != '\t')
+      while (**s != ',' && !is_whitespace (**s))
 	*s += 1;
       c = **s;
       **s = 0x00;
@@ -2947,7 +2928,7 @@ pa_parse_nonneg_add_cmpltr (char **s)
   if (**s == ',')
     {
       *s += 1;
-      while (**s != ',' && **s != ' ' && **s != '\t')
+      while (**s != ',' && !is_whitespace (**s))
 	*s += 1;
       c = **s;
       **s = 0x00;
@@ -3016,7 +2997,7 @@ pa_parse_neg_add_cmpltr (char **s)
   if (**s == ',')
     {
       *s += 1;
-      while (**s != ',' && **s != ' ' && **s != '\t')
+      while (**s != ',' && !is_whitespace (**s))
 	*s += 1;
       c = **s;
       **s = 0x00;
@@ -3089,7 +3070,7 @@ pa_parse_addb_64_cmpltr (char **s)
   if (**s == ',')
     {
       *s += 1;
-      while (**s != ',' && **s != ' ' && **s != '\t')
+      while (**s != ',' && !is_whitespace (**s))
 	*s += 1;
       c = **s;
       **s = 0x00;
@@ -3197,7 +3178,7 @@ pa_ip (char *str)
 
   /* Convert everything up to the first whitespace character into lower
      case.  */
-  for (s = str; *s != ' ' && *s != '\t' && *s != '\n' && *s != '\0'; s++)
+  for (s = str; !is_whitespace (*s) && !is_end_of_stmt (*s); s++)
     *s = TOLOWER (*s);
 
   /* Skip to something interesting.  */
@@ -3217,11 +3198,13 @@ pa_ip (char *str)
 
       /*FALLTHROUGH */
 
-    case ' ':
+    zap_char:
       *s++ = '\0';
       break;
 
     default:
+      if (is_whitespace (*s))
+	goto zap_char;
       as_bad (_("Unknown opcode: `%s'"), str);
       return;
     }
@@ -3258,7 +3241,7 @@ pa_ip (char *str)
       for (args = insn->args;; ++args)
 	{
 	  /* Absorb white space in instruction.  */
-	  while (*s == ' ' || *s == '\t')
+	  while (is_whitespace (*s))
 	    s++;
 
 	  switch (*args)
@@ -3283,8 +3266,12 @@ pa_ip (char *str)
 	    case '(':
 	    case ')':
 	    case ',':
-	    case ' ':
 	      if (*s++ == *args)
+		continue;
+	      break;
+
+	    case ' ':
+	      if (is_whitespace (*s++))
 		continue;
 	      break;
 
@@ -3301,7 +3288,7 @@ pa_ip (char *str)
 	       is there.  */
 	    case '!':
 	      /* Skip whitespace before register.  */
-	      while (*s == ' ' || *s == '\t')
+	      while (is_whitespace (*s))
 		s = s + 1;
 
 	      if (!strncasecmp (s, "%sar", 4))
@@ -3975,7 +3962,7 @@ pa_ip (char *str)
 			  break;
 
 			name = s;
-			while (*s != ',' && *s != ' ' && *s != '\t')
+			while (*s != ',' && !is_whitespace (*s))
 			  s += 1;
 			c = *s;
 			*s = 0x00;
@@ -4150,7 +4137,7 @@ pa_ip (char *str)
 			  break;
 
 			name = s;
-			while (*s != ',' && *s != ' ' && *s != '\t')
+			while (*s != ',' && !is_whitespace (*s))
 			  s += 1;
 			c = *s;
 			*s = 0x00;
@@ -4298,7 +4285,7 @@ pa_ip (char *str)
 			  break;
 
 			name = s;
-			while (*s != ',' && *s != ' ' && *s != '\t')
+			while (*s != ',' && !is_whitespace (*s))
 			  s += 1;
 			c = *s;
 			*s = 0x00;
@@ -4372,7 +4359,7 @@ pa_ip (char *str)
 			  break;
 
 			name = s;
-			while (*s != ',' && *s != ' ' && *s != '\t')
+			while (*s != ',' && !is_whitespace (*s))
 			  s += 1;
 			c = *s;
 			*s = 0x00;
@@ -4516,7 +4503,7 @@ pa_ip (char *str)
 			    s += 3;
 			  }
 			/* ",*" is a valid condition.  */
-			else if (*args != 'U' || (*s != ' ' && *s != '\t'))
+			else if (*args != 'U' || !is_whitespace (*s))
 			  as_bad (_("Invalid Unit Instruction Condition."));
 		      }
 		    /* 32-bit is default for no condition.  */

@@ -18,6 +18,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "dwarf2/cooked-index.h"
+#include "dwarf2/index-common.h"
 #include "dwarf2/read.h"
 #include "dwarf2/stringify.h"
 #include "dwarf2/index-cache.h"
@@ -93,39 +94,42 @@ int
 cooked_index_entry::compare (const char *stra, const char *strb,
 			     comparison_mode mode)
 {
+#if defined (__GNUC__) && !defined (__clang__) && __GNUC__ <= 7
+  /* Work around error with gcc 7.5.0.  */
   auto munge = [] (char c) -> unsigned char
+#else
+  auto munge = [] (char c) constexpr -> unsigned char
+#endif
     {
-      /* We want to sort '<' before any other printable character.
-	 So, rewrite '<' to something just before ' '.  */
+      /* Treat '<' as if it ended the string.  This lets something
+	 like "func<t>" match "func<t<int>>".  See the "Breakpoints in
+	 template functions" section in the manual.  */
       if (c == '<')
-	return '\x1f';
+	return '\0';
       return TOLOWER ((unsigned char) c);
     };
 
-  while (*stra != '\0'
-	 && *strb != '\0'
-	 && (munge (*stra) == munge (*strb)))
+  unsigned char a = munge (*stra);
+  unsigned char b = munge (*strb);
+
+  while (a != '\0' && b != '\0' && a == b)
     {
-      ++stra;
-      ++strb;
+      a = munge (*++stra);
+      b = munge (*++strb);
     }
 
-  unsigned char c1 = munge (*stra);
-  unsigned char c2 = munge (*strb);
-
-  if (c1 == c2)
+  if (a == b)
     return 0;
 
   /* When completing, if STRB ends earlier than STRA, consider them as
-     equal.  When comparing, if STRB ends earlier and STRA ends with
-     '<', consider them as equal.  */
-  if (mode == COMPLETE || (mode == MATCH && c1 == munge ('<')))
+     equal.  */
+  if (mode == COMPLETE || (mode == MATCH && a == munge ('<')))
     {
-      if (c2 == '\0')
+      if (b == '\0')
 	return 0;
     }
 
-  return c1 < c2 ? -1 : 1;
+  return a < b ? -1 : 1;
 }
 
 #if GDB_SELF_TEST
@@ -155,33 +159,36 @@ test_compare ()
 					   mode_complete) == 0);
 
   SELF_CHECK (cooked_index_entry::compare ("name", "name<>",
-					   mode_compare) < 0);
+					   mode_compare) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name<>", "name",
 					   mode_compare) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name", "name<>",
-					   mode_complete) < 0);
+					   mode_complete) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name<>", "name",
 					   mode_complete) == 0);
 
   SELF_CHECK (cooked_index_entry::compare ("name<arg>", "name<arg>",
 					   mode_compare) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name<arg>", "name<ag>",
-					   mode_compare) > 0);
+					   mode_compare) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name<arg>", "name<arg>",
 					   mode_complete) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name<arg>", "name<ag>",
-					   mode_complete) > 0);
+					   mode_complete) == 0);
 
   SELF_CHECK (cooked_index_entry::compare ("name<arg<more>>",
 					   "name<arg<more>>",
 					   mode_compare) == 0);
+  SELF_CHECK (cooked_index_entry::compare ("name<arg>",
+					   "name<arg<more>>",
+					   mode_compare) == 0);
 
   SELF_CHECK (cooked_index_entry::compare ("name", "name<arg<more>>",
-					   mode_compare) < 0);
+					   mode_compare) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name<arg<more>>", "name",
 					   mode_compare) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name<arg<more>>", "name<arg<",
-					   mode_compare) > 0);
+					   mode_compare) == 0);
   SELF_CHECK (cooked_index_entry::compare ("name<arg<more>>", "name<arg<",
 					   mode_complete) == 0);
 
@@ -191,7 +198,7 @@ test_compare ()
   SELF_CHECK (cooked_index_entry::compare ("abcd", "", mode_complete) == 0);
 
   SELF_CHECK (cooked_index_entry::compare ("func", "func<type>",
-					   mode_sort) < 0);
+					   mode_sort) == 0);
   SELF_CHECK (cooked_index_entry::compare ("func<type>", "func1",
 					   mode_sort) < 0);
 }
@@ -640,11 +647,12 @@ cooked_index::wait (cooked_state desired_state, bool allow_quit)
 }
 
 void
-cooked_index::set_contents (vec_type &&vec, deferred_warnings *warn,
+cooked_index::set_contents (std::vector<cooked_index_shard_up> &&shards,
+			    deferred_warnings *warn,
 			    const parent_map_map *parent_maps)
 {
-  gdb_assert (m_vector.empty ());
-  m_vector = std::move (vec);
+  gdb_assert (m_shards.empty ());
+  m_shards = std::move (shards);
 
   m_state->set (cooked_state::MAIN_AVAILABLE);
 
@@ -660,10 +668,10 @@ cooked_index::set_contents (vec_type &&vec, deferred_warnings *warn,
     m_state->set (cooked_state::CACHE_DONE);
   });
 
-  for (auto &idx : m_vector)
+  for (auto &shard : m_shards)
     {
-      auto this_index = idx.get ();
-      finalizers.add_task ([=] () { this_index->finalize (parent_maps); });
+      auto this_shard = shard.get ();
+      finalizers.add_task ([=] () { this_shard->finalize (parent_maps); });
     }
 
   finalizers.start ();
@@ -689,9 +697,9 @@ cooked_index::lookup (unrelocated_addr addr)
 {
   /* Ensure that the address maps are ready.  */
   wait (cooked_state::MAIN_AVAILABLE, true);
-  for (const auto &index : m_vector)
+  for (const auto &shard : m_shards)
     {
-      dwarf2_per_cu_data *result = index->lookup (addr);
+      dwarf2_per_cu_data *result = shard->lookup (addr);
       if (result != nullptr)
 	return result;
     }
@@ -706,8 +714,8 @@ cooked_index::get_addrmaps ()
   /* Ensure that the address maps are ready.  */
   wait (cooked_state::MAIN_AVAILABLE, true);
   std::vector<const addrmap *> result;
-  for (const auto &index : m_vector)
-    result.push_back (index->m_addrmap);
+  for (const auto &shard : m_shards)
+    result.push_back (shard->m_addrmap);
   return result;
 }
 
@@ -718,9 +726,9 @@ cooked_index::find (const std::string &name, bool completing)
 {
   wait (cooked_state::FINALIZED, true);
   std::vector<cooked_index_shard::range> result_range;
-  result_range.reserve (m_vector.size ());
-  for (auto &entry : m_vector)
-    result_range.push_back (entry->find (name, completing));
+  result_range.reserve (m_shards.size ());
+  for (auto &shard : m_shards)
+    result_range.push_back (shard->find (name, completing));
   return range (std::move (result_range));
 }
 
@@ -744,9 +752,9 @@ const cooked_index_entry *
 cooked_index::get_main () const
 {
   const cooked_index_entry *best_entry = nullptr;
-  for (const auto &index : m_vector)
+  for (const auto &shard : m_shards)
     {
-      const cooked_index_entry *entry = index->get_main ();
+      const cooked_index_entry *entry = shard->get_main ();
       /* Choose the first "main" we see.  We only do this for names
 	 not requiring canonicalization.  At this point in the process
 	 names might not have been canonicalized.  However, currently,
@@ -834,12 +842,15 @@ cooked_index::dump (gdbarch *arch)
   std::vector<const addrmap *> addrmaps = this->get_addrmaps ();
   for (i = 0; i < addrmaps.size (); ++i)
     {
-      const addrmap &addrmap = *addrmaps[i];
+      const addrmap *addrmap = addrmaps[i];
 
-      gdb_printf ("    [%zu] ((addrmap *) %p)\n", i, &addrmap);
+      gdb_printf ("    [%zu] ((addrmap *) %p)\n", i, addrmap);
       gdb_printf ("\n");
 
-      addrmap.foreach ([arch] (CORE_ADDR start_addr, const void *obj)
+      if (addrmap == nullptr)
+	continue;
+
+      addrmap->foreach ([arch] (CORE_ADDR start_addr, const void *obj)
 	{
 	  QUIT;
 

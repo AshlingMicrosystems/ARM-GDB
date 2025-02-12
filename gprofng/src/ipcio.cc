@@ -1,4 +1,4 @@
-/* Copyright (C) 2021-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Oracle.
 
    This file is part of GNU Binutils.
@@ -774,6 +774,16 @@ writeString (const char *s, IPCrequest* req)
   OUTS->sendSVal (s);
   writeResponseWithHeader (req->getRequestID (), req->getChannelID (),
 			   RESPONSE_TYPE_COMPLETE, RESPONSE_STATUS_SUCCESS, OUTS);
+}
+
+void
+writeError (const char *s, IPCrequest* req)
+{
+  IPCresponse *OUTS = responseBufferPool->getNewResponse (BUFFER_SIZE_LARGE);
+  OUTS->sendByte (L_STRING);
+  OUTS->sendSVal (s);
+  writeResponseWithHeader (req->getRequestID (), req->getChannelID (),
+			   RESPONSE_TYPE_COMPLETE, RESPONSE_STATUS_ERROR, OUTS);
 }
 
 void

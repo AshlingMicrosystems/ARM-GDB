@@ -1,5 +1,5 @@
 /* BFD backend for Extended Tektronix Hex Format  objects.
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
    Written by Steve Chamberlain of Cygnus Support <sac@cygnus.com>.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -616,10 +616,14 @@ tekhex_object_p (bfd *abfd)
   if (b[0] != '%' || !ISHEX (b[1]) || !ISHEX (b[2]) || !ISHEX (b[3]))
     return NULL;
 
-  tekhex_mkobject (abfd);
+  if (!tekhex_mkobject (abfd))
+    return NULL;
 
   if (!pass_over (abfd, first_phase))
-    return NULL;
+    {
+      bfd_release (abfd, abfd->tdata.tekhex_data);
+      return NULL;
+    }
 
   return _bfd_no_cleanup;
 }
@@ -869,7 +873,7 @@ tekhex_write_object_contents (bfd *abfd)
 		case 'C':
 		case 'U':
 		  bfd_set_error (bfd_error_wrong_format);
-		  return false;
+		  goto fail;
 		}
 
 	      writesym (&dst, sym->name);
@@ -881,8 +885,11 @@ tekhex_write_object_contents (bfd *abfd)
 
   /* And the terminator.  */
   if (bfd_write ("%0781010\n", 9, abfd) != 9)
-    abort ();
+    goto fail;
   return true;
+
+ fail:
+  return false;
 }
 
 static int
@@ -982,11 +989,9 @@ const bfd_target tekhex_vec =
   bfd_target_tekhex_flavour,
   BFD_ENDIAN_UNKNOWN,		/* Target byte order.  */
   BFD_ENDIAN_UNKNOWN,		/* Target headers byte order.  */
-  (EXEC_P |			/* Object flags.  */
-   HAS_SYMS | HAS_LINENO | HAS_DEBUG |
-   HAS_RELOC | HAS_LOCALS | WP_TEXT | D_PAGED),
+  EXEC_P | HAS_SYMS,		/* Object flags.  */
   (SEC_CODE | SEC_DATA | SEC_ROM | SEC_HAS_CONTENTS
-   | SEC_ALLOC | SEC_LOAD | SEC_RELOC),	/* Section flags.  */
+   | SEC_ALLOC | SEC_LOAD),	/* Section flags.  */
   0,				/* Leading underscore.  */
   ' ',				/* AR_pad_char.  */
   16,				/* AR_max_namelen.  */
@@ -1008,13 +1013,13 @@ const bfd_target tekhex_vec =
   {
     _bfd_bool_bfd_false_error,
     tekhex_mkobject,
-    _bfd_generic_mkarchive,
+    _bfd_bool_bfd_false_error,
     _bfd_bool_bfd_false_error,
   },
   {				/* bfd_write_contents.  */
     _bfd_bool_bfd_false_error,
     tekhex_write_object_contents,
-    _bfd_write_archive_contents,
+    _bfd_bool_bfd_false_error,
     _bfd_bool_bfd_false_error,
   },
 

@@ -527,6 +527,7 @@ static struct async_signal_handler *tui_sigwinch_token;
 static void
 tui_sigwinch_handler (int signal)
 {
+  scoped_restore restore_errno = make_scoped_restore (&errno);
   mark_async_signal_handler (tui_sigwinch_token);
   tui_set_win_resized_to (true);
 }
@@ -968,6 +969,8 @@ tui_set_win_size (const char *arg, bool set_width_p)
 	      new_size = curr_size + input_no;
 	    }
 
+	  tui_batch_rendering defer;
+
 	  /* Now change the window's height, and adjust
 	     all other windows around it.  */
 	  if (set_width_p)
@@ -1081,14 +1084,6 @@ parse_scrolling_args (const char *arg,
 
 static cmd_list_element *tui_window_cmds = nullptr;
 
-/* Called to implement 'tui window'.  */
-
-static void
-tui_window_command (const char *args, int from_tty)
-{
-  help_list (tui_window_cmds, "tui window ", all_commands, gdb_stdout);
-}
-
 /* See tui-win.h.  */
 
 bool tui_left_margin_verbose = false;
@@ -1124,9 +1119,9 @@ Usage: tabset N"));
   deprecate_cmd (tabset_cmd, "set tui tab-width");
 
   /* Setup the 'tui window' list of command.  */
-  add_prefix_cmd ("window", class_tui, tui_window_command,
-		  _("Text User Interface window commands."),
-		  &tui_window_cmds, 1, tui_get_cmd_list ());
+  add_basic_prefix_cmd ("window", class_tui,
+			_("Text User Interface window commands."),
+			&tui_window_cmds, 1, tui_get_cmd_list ());
 
   cmd_list_element *winheight_cmd
     = add_cmd ("height", class_tui, tui_set_win_height_command, _("\

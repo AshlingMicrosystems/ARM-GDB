@@ -75,7 +75,7 @@ legacy_register_sim_regno (struct gdbarch *gdbarch, int regnum)
   gdb_assert (regnum >= 0 && regnum < gdbarch_num_regs (gdbarch));
   /* NOTE: cagney/2002-05-13: The old code did it this way and it is
      suspected that some GDB/SIM combinations may rely on this
-     behaviour.  The default should be one2one_register_sim_regno
+     behavior.  The default should be one2one_register_sim_regno
      (below).  */
   if (gdbarch_register_name (gdbarch, regnum)[0] != '\0')
     return regnum;
@@ -1497,6 +1497,32 @@ bool
 gdbarch_initialized_p (gdbarch *arch)
 {
   return arch->initialized_p;
+}
+
+/* See arch-utils.h.  */
+
+gdb_environ
+core_file_exec_context::environment () const
+{
+  gdb_environ e;
+
+  for (const auto &entry : m_environment)
+    {
+      char *eq = strchr (entry.get (), '=');
+
+      /* If there's no '=' character, then skip this entry.  */
+      if (eq == nullptr)
+	continue;
+
+      const char *value = eq + 1;
+      const char *var = entry.get ();
+
+      *eq = '\0';
+      e.set (var, value);
+      *eq = '=';
+    }
+
+  return e;
 }
 
 void _initialize_gdbarch_utils ();

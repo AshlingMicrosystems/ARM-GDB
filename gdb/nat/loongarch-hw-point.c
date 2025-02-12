@@ -18,7 +18,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "gdbsupport/common-defs.h"
 #include "gdbsupport/break-common.h"
 #include "gdbsupport/common-regcache.h"
 #include "loongarch-hw-point.h"
@@ -317,4 +316,28 @@ loongarch_region_ok_for_watchpoint (CORE_ADDR addr, int len)
     return 0;
 
   return 1;
+}
+
+/* See nat/loongarch-hw-point.h*/
+
+bool
+loongarch_stopped_data_address (const struct loongarch_debug_reg_state *state,
+				CORE_ADDR addr_trap, CORE_ADDR *addr_p)
+{
+  int i;
+
+  for (i = loongarch_num_wp_regs - 1; i >= 0; --i)
+    {
+      const CORE_ADDR addr_watch = state->dr_addr_wp[i];
+
+      if (state->dr_ref_count_wp[i]
+	  && DR_CONTROL_ENABLED (state->dr_ctrl_wp[i])
+	  && addr_trap == addr_watch)
+	{
+	  *addr_p = addr_watch;
+	  return true;
+	}
+    }
+
+  return false;
 }

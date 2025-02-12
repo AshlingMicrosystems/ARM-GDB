@@ -1,6 +1,6 @@
 /* Python interface to symbols.
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -153,6 +153,19 @@ sympy_get_addr_class (PyObject *self, void *closure)
   return gdb_py_object_from_longest (symbol->aclass ()).release ();
 }
 
+/* Implement gdb.Symbol.domain attribute.  Return the domain as an
+   integer.  */
+
+static PyObject *
+sympy_get_domain (PyObject *self, void *closure)
+{
+  struct symbol *symbol = nullptr;
+
+  SYMPY_REQUIRE_VALID (self, symbol);
+
+  return gdb_py_object_from_longest (symbol->domain ()).release ();
+}
+
 static PyObject *
 sympy_is_argument (PyObject *self, void *closure)
 {
@@ -203,6 +216,18 @@ sympy_is_variable (PyObject *self, void *closure)
 			  && (theclass == LOC_LOCAL || theclass == LOC_REGISTER
 			      || theclass == LOC_STATIC || theclass == LOC_COMPUTED
 			      || theclass == LOC_OPTIMIZED_OUT));
+}
+
+/* Implementation of Symbol.is_artificial.  */
+
+static PyObject *
+sympy_is_artificial (PyObject *self, void *closure)
+{
+  struct symbol *symbol = nullptr;
+
+  SYMPY_REQUIRE_VALID (self, symbol);
+
+  return PyBool_FromLong (symbol->is_artificial ());
 }
 
 /* Implementation of gdb.Symbol.needs_frame -> Boolean.
@@ -598,8 +623,7 @@ gdbpy_lookup_static_symbols (PyObject *self, PyObject *args, PyObject *kw)
       /* Expand any symtabs that contain potentially matching symbols.  */
       lookup_name_info lookup_name (name, symbol_name_match_type::FULL);
       expand_symtabs_matching (NULL, lookup_name, NULL, NULL,
-			       SEARCH_GLOBAL_BLOCK | SEARCH_STATIC_BLOCK,
-			       SEARCH_ALL_DOMAINS);
+			       SEARCH_STATIC_BLOCK, flags);
 
       for (objfile *objfile : current_program_space->objfiles ())
 	{
@@ -620,10 +644,11 @@ gdbpy_lookup_static_symbols (PyObject *self, PyObject *args, PyObject *kw)
 
 		  if (symbol != nullptr)
 		    {
-		      PyObject *sym_obj
-			= symbol_to_symbol_object (symbol);
+		      PyObject *sym_obj = symbol_to_symbol_object (symbol);
+		      if (sym_obj == nullptr)
+			return nullptr;
 		      if (PyList_Append (return_list.get (), sym_obj) == -1)
-			return NULL;
+			return nullptr;
 		    }
 		}
 	    }
@@ -707,8 +732,11 @@ static gdb_PyGetSetDef symbol_object_getset[] = {
 This is either name or linkage_name, depending on whether the user asked GDB\n\
 to display demangled or mangled names.", NULL },
   { "addr_class", sympy_get_addr_class, NULL, "Address class of the symbol." },
+  { "domain", sympy_get_domain, nullptr, "Domain of the symbol." },
   { "is_argument", sympy_is_argument, NULL,
     "True if the symbol is an argument of a function." },
+  { "is_artificial", sympy_is_artificial, nullptr,
+    "True if the symbol is marked artificial." },
   { "is_constant", sympy_is_constant, NULL,
     "True if the symbol is a constant." },
   { "is_function", sympy_is_function, NULL,

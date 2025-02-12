@@ -1,5 +1,5 @@
 # Expect script for RISC-V ELF linker tests
-#   Copyright (C) 2017-2024 Free Software Foundation, Inc.
+#   Copyright (C) 2017-2025 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -165,14 +165,9 @@ if [istarget "riscv*-*-*"] {
     run_dump_test "attr-merge-priv-spec-03"
     run_dump_test "attr-merge-user-ext-01"
     run_dump_test "attr-merge-stack-align-failed"
-    run_dump_test "attr-merge-priv-spec-failed-01"
-    run_dump_test "attr-merge-priv-spec-failed-02"
-    run_dump_test "attr-merge-priv-spec-failed-03"
-    run_dump_test "attr-merge-priv-spec-failed-04"
-    run_dump_test "attr-merge-priv-spec-failed-05"
-    run_dump_test "attr-merge-priv-spec-failed-06"
     run_dump_test "attr-phdr"
     run_dump_test "relax-max-align-gp"
+    run_dump_test "relax-data-segment-align"
     run_dump_test "uleb128"
     run_dump_test "pr31179"
     run_dump_test "pr31179-r"

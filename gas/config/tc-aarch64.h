@@ -1,5 +1,5 @@
 /* tc-aarch64.h -- Header file for tc-aarch64.c.
-   Copyright (C) 2009-2024 Free Software Foundation, Inc.
+   Copyright (C) 2009-2025 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GAS.
@@ -182,7 +182,7 @@ struct aarch64_frag_type
 
 #define TC_FRAG_TYPE		struct aarch64_frag_type
 #define TC_FRAG_INIT(fragp, max_bytes) aarch64_init_frag (fragp, max_bytes)
-#define HANDLE_ALIGN(fragp)	aarch64_handle_align (fragp)
+#define HANDLE_ALIGN(sec, fragp) aarch64_handle_align (fragp)
 
 #define md_do_align(N, FILL, LEN, MAX, LABEL)					\
   if (FILL == NULL && (N) != 0 && ! need_pass_2 && subseg_text_p (now_seg))	\

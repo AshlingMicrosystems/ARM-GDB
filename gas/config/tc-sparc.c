@@ -1,5 +1,5 @@
 /* tc-sparc.c -- Assemble for the SPARC
-   Copyright (C) 1989-2024 Free Software Foundation, Inc.
+   Copyright (C) 1989-2025 Free Software Foundation, Inc.
    This file is part of GAS, the GNU Assembler.
 
    GAS is free software; you can redistribute it and/or modify
@@ -1743,13 +1743,15 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 
     case ',':
       comma = 1;
-      /* Fall through.  */
-
-    case ' ':
       *s++ = '\0';
       break;
 
     default:
+      if (is_whitespace (*s))
+	{
+	  *s++ = '\0';
+	  break;
+	}
       as_bad (_("Unknown opcode: `%s'"), str);
       *pinsn = NULL;
       return special_case;
@@ -1798,11 +1800,11 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 			    goto error;
 			  }
 			kmask |= jmask;
-			while (*s == ' ')
+			while (is_whitespace (*s))
 			  ++s;
 			if (*s == '|' || *s == '+')
 			  ++s;
-			while (*s == ' ')
+			while (is_whitespace (*s))
 			  ++s;
 		      }
 		  }
@@ -2039,7 +2041,7 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	      goto immediate;
 
 	    case ')':
-	      if (*s == ' ')
+	      if (is_whitespace (*s))
 		s++;
 	      if ((s[0] == '0' && s[1] == 'x' && ISXDIGIT (s[2]))
 		  || ISDIGIT (*s))
@@ -2131,7 +2133,7 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	      break;
 
 	    case 'z':
-	      if (*s == ' ')
+	      if (is_whitespace (*s))
 		{
 		  ++s;
 		}
@@ -2144,7 +2146,7 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	      break;
 
 	    case 'Z':
-	      if (*s == ' ')
+	      if (is_whitespace (*s))
 		{
 		  ++s;
 		}
@@ -2157,7 +2159,7 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	      break;
 
 	    case '6':
-	      if (*s == ' ')
+	      if (is_whitespace (*s))
 		{
 		  ++s;
 		}
@@ -2169,7 +2171,7 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	      break;
 
 	    case '7':
-	      if (*s == ' ')
+	      if (is_whitespace (*s))
 		{
 		  ++s;
 		}
@@ -2181,7 +2183,7 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	      break;
 
 	    case '8':
-	      if (*s == ' ')
+	      if (is_whitespace (*s))
 		{
 		  ++s;
 		}
@@ -2193,7 +2195,7 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	      break;
 
 	    case '9':
-	      if (*s == ' ')
+	      if (is_whitespace (*s))
 		{
 		  ++s;
 		}
@@ -2303,8 +2305,12 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	    case '[':		/* These must match exactly.  */
 	    case ']':
 	    case ',':
-	    case ' ':
 	      if (*s++ == *args)
+		continue;
+	      break;
+
+	    case ' ':
+	      if (is_whitespace (*s++))
 		continue;
 	      break;
 
@@ -2680,7 +2686,7 @@ sparc_ip (char *str, const struct sparc_opcode **pinsn)
 	      /* fallthrough */
 
 	    immediate:
-	      if (*s == ' ')
+	      if (is_whitespace (*s))
 		s++;
 
 	      {
@@ -3834,10 +3840,10 @@ tc_gen_reloc (asection *section, fixS *fixp)
   arelent *reloc;
   bfd_reloc_code_real_type code;
 
-  relocs[0] = reloc = XNEW (arelent);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
+  relocs[0] = reloc;
   relocs[1] = NULL;
-
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
 
@@ -4014,7 +4020,6 @@ tc_gen_reloc (asection *section, fixS *fixp)
       as_bad_where (fixp->fx_file, fixp->fx_line,
 		    _("internal error: can't export reloc type %d (`%s')"),
 		    fixp->fx_r_type, bfd_get_reloc_code_name (code));
-      xfree (reloc);
       relocs[0] = NULL;
       return relocs;
     }
@@ -4040,10 +4045,10 @@ tc_gen_reloc (asection *section, fixS *fixp)
      on the same location.  */
   if (code == BFD_RELOC_SPARC_OLO10)
     {
-      relocs[1] = reloc = XNEW (arelent);
+      reloc = notes_alloc (sizeof (arelent));
+      reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
+      relocs[1] = reloc;
       relocs[2] = NULL;
-
-      reloc->sym_ptr_ptr = XNEW (asymbol *);
       *reloc->sym_ptr_ptr
 	= symbol_get_bfdsym (section_symbol (absolute_section));
       reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;

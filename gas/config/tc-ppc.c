@@ -1,5 +1,5 @@
 /* tc-ppc.c -- Assemble for the PowerPC or POWER (RS/6000)
-   Copyright (C) 1994-2024 Free Software Foundation, Inc.
+   Copyright (C) 1994-2025 Free Software Foundation, Inc.
    Written by Ian Lance Taylor, Cygnus Support.
 
    This file is part of GAS, the GNU Assembler.
@@ -902,7 +902,7 @@ ppc_parse_name (const char *name, expressionS *exp, enum expr_mode mode)
   /* If we have an absolute symbol or a reg, then we know its value
      now.  Copy the symbol value expression to propagate X_md.  */
   bool done = false;
-  if (mode != expr_defer
+  if (!expr_defer_p (mode)
       && !S_FORCE_RELOC (sym, 0))
     {
       segT segment = S_GET_SEGMENT (sym);
@@ -3325,7 +3325,7 @@ md_assemble (char *str)
   unsigned int insn_length;
 
   /* Get the opcode.  */
-  for (s = str; *s != '\0' && ! ISSPACE (*s); s++)
+  for (s = str; ! is_end_of_stmt (*s) && ! is_whitespace (*s); s++)
     ;
   if (*s != '\0')
     *s++ = '\0';
@@ -3351,7 +3351,7 @@ md_assemble (char *str)
     }
 
   str = s;
-  while (ISSPACE (*str))
+  while (is_whitespace (*str))
     ++str;
 
 #ifdef OBJ_XCOFF
@@ -3516,13 +3516,6 @@ md_assemble (char *str)
 	  char *orig_str = str;
 	  bfd_reloc_code_real_type reloc = ppc_elf_suffix (&str, &ex);
 
-	  if (ex.X_op == O_constant)
-	    {
-	      val = ex.X_add_number;
-	      if (sizeof (ex.X_add_number) < sizeof (val)
-		  && (ex.X_add_number < 0) != ex.X_extrabit)
-		val = val ^ ((addressT) -1 ^ (uint64_t) -1);
-	    }
 	  if (reloc != BFD_RELOC_NONE)
 	    switch (reloc)
 	      {
@@ -3974,7 +3967,7 @@ md_assemble (char *str)
 	    {
 	      do
 		++str;
-	      while (ISSPACE (*str));
+	      while (is_whitespace (*str));
 	      endc = ',';
 	    }
 	}
@@ -4003,7 +3996,7 @@ md_assemble (char *str)
 	}
     }
 
-  while (ISSPACE (*str))
+  while (is_whitespace (*str))
     ++str;
 
   if (*str != '\0')
@@ -4089,12 +4082,14 @@ md_assemble (char *str)
 	 a label attached to the instruction.  By "attached" we mean
 	 on the same source line as the instruction and without any
 	 intervening semicolons.  */
-      dot_value = frag_now_fix ();
-      dot_frag = frag_now;
+      symbol_set_value_now (&dot_symbol);
       for (l = insn_labels; l != NULL; l = l->next)
 	{
-	  symbol_set_frag (l->label, dot_frag);
-	  S_SET_VALUE (l->label, dot_value);
+	  addressT value;
+
+	  symbol_set_frag (l->label,
+			   symbol_get_frag_and_value (&dot_symbol, &value));
+	  S_SET_VALUE (l->label, value);
 	}
     }
 
@@ -5836,7 +5831,7 @@ ppc_tc (int ignore ATTRIBUTE_UNUSED)
 
   /* Skip the TOC symbol name.  */
   while (is_part_of_name (*input_line_pointer)
-	 || *input_line_pointer == ' '
+	 || is_whitespace (*input_line_pointer)
 	 || *input_line_pointer == '['
 	 || *input_line_pointer == ']'
 	 || *input_line_pointer == '{'
@@ -5944,6 +5939,7 @@ ppc_machine (int ignore ATTRIBUTE_UNUSED)
       if (ppc_cpu != old_cpu)
 	ppc_setup_opcodes ();
     }
+  free (cpu_string);
 
   demand_empty_rest_of_line ();
 }
@@ -6894,7 +6890,7 @@ ppc_nop_select (void)
 }
 
 void
-ppc_handle_align (struct frag *fragP)
+ppc_handle_align (segT sec, struct frag *fragP)
 {
   valueT count = (fragP->fr_next->fr_address
 		  - (fragP->fr_address + fragP->fr_fix));
@@ -6933,7 +6929,9 @@ ppc_handle_align (struct frag *fragP)
 	  if (count == 0)
 	    return;
 
-	  rest = xmalloc (SIZEOF_STRUCT_FRAG + 4);
+	  segment_info_type *seginfo = seg_info (sec);
+	  struct obstack *ob = &seginfo->frchainP->frch_obstack;
+	  rest = frag_alloc (ob, 4);
 	  memcpy (rest, fragP, SIZEOF_STRUCT_FRAG);
 	  fragP->fr_next = rest;
 	  fragP = rest;
@@ -6957,7 +6955,9 @@ ppc_handle_align (struct frag *fragP)
 	     reduce the number of nops in the current frag by one.  */
 	  if (count > 4)
 	    {
-	      struct frag *group_nop = xmalloc (SIZEOF_STRUCT_FRAG + 4);
+	      segment_info_type *seginfo = seg_info (sec);
+	      struct obstack *ob = &seginfo->frchainP->frch_obstack;
+	      struct frag *group_nop = frag_alloc (ob, 4);
 
 	      memcpy (group_nop, fragP, SIZEOF_STRUCT_FRAG);
 	      group_nop->fr_address = group_nop->fr_next->fr_address - 4;
@@ -7754,17 +7754,17 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
   static arelent *relocs[3];
   arelent *reloc;
 
-  relocs[0] = reloc = XNEW (arelent);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
+  relocs[0] = reloc;
   relocs[1] = NULL;
-
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
   /* BFD_RELOC_PPC64_TLS_PCREL generates R_PPC64_TLS with an odd r_offset.  */
   if (fixp->fx_r_type == BFD_RELOC_PPC64_TLS_PCREL)
     reloc->address++;
   reloc->howto = bfd_reloc_type_lookup (stdoutput, fixp->fx_r_type);
-  if (reloc->howto == (reloc_howto_type *) NULL)
+  if (reloc->howto == NULL)
     {
       as_bad_where (fixp->fx_file, fixp->fx_line,
 		    _("reloc %d not supported by object file format"),
@@ -7775,10 +7775,10 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 
   if (fixp->fx_subsy != NULL)
     {
-      relocs[1] = reloc = XNEW (arelent);
+      reloc = notes_alloc (sizeof (arelent));
+      reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
+      relocs[1] = reloc;
       relocs[2] = NULL;
-
-      reloc->sym_ptr_ptr = XNEW (asymbol *);
       *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_subsy);
       reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
 
@@ -7788,14 +7788,9 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
       if (reloc->howto == (reloc_howto_type *) NULL)
         {
 	  as_bad_subtract (fixp);
-	  free (relocs[1]->sym_ptr_ptr);
-	  free (relocs[1]);
-	  free (relocs[0]->sym_ptr_ptr);
-	  free (relocs[0]);
 	  relocs[0] = NULL;
         }
     }
-
 
   return relocs;
 }

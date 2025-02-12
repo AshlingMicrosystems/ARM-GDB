@@ -16,8 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef SOLIST_H
-#define SOLIST_H
+#ifndef GDB_SOLIST_H
+#define GDB_SOLIST_H
 
 #define SO_NAME_MAX_PATH_SIZE 512	/* FIXME: Should be dynamic */
 
@@ -77,7 +77,9 @@ struct solib : intrusive_list_node<solib>
      current_sos must initialize these fields to 0.  */
 
   gdb_bfd_ref_ptr abfd;
-  char symbols_loaded = 0;	/* flag: symbols read in yet?  */
+
+  /* True if symbols have been read in.  */
+  bool symbols_loaded = false;
 
   /* objfile with symbols for a loaded library.  Target memory is read from
      ABFD.  OBJFILE may be NULL either before symbols have been loaded, if
@@ -202,4 +204,4 @@ extern gdb_bfd_ref_ptr solib_bfd_open (const char *in_pathname);
    unable to find an address within the library SO.  */
 extern std::optional<CORE_ADDR> default_find_solib_addr (solib &so);
 
-#endif
+#endif /* GDB_SOLIST_H */

@@ -88,7 +88,6 @@ responsibility among the other maintainers.
   GOLD		   Ian Lance Taylor <iant@google.com>
   GOLD		   Cary Coutant <ccoutant@gmail.com>
   gprofng	   Vladimir Mezentsev <vladimir.mezentsev@oracle.com>
-  H8300		   Prafulla Thakare <prafulla.thakare@kpitcummins.com>
   HPPA		   Dave Anglin <dave.anglin@bell.net>
   HPPA elf64	   Jeff Law <law@redhat.com> [Basic maintainance only]
   IA-64		   Jim Wilson <wilson@tuliptree.org>
@@ -108,7 +107,6 @@ responsibility among the other maintainers.
   MACH-O           Tristan Gingold <tgingold@free.fr>
   MAXQ		   Inderpreet Singh <inderpreetb@noida.hcltech.com>
   MEP		   Nick Clifton <nickc@redhat.com>
-  METAG            Markos Chandras <markos.chandras@imgtec.com>
   MICROBLAZE	   Michael Eager <eager@eagercon.com>
   MIPS		   Chenghua Xu <paul.hua.gm@gmail.com>
   MIPS I-IV	   Maciej W. Rozycki <macro@orcam.me.uk>
@@ -117,12 +115,10 @@ responsibility among the other maintainers.
   Moxie		   Anthony Green <green@moxielogic.com>
   NDS32		   Kuan-Lin Chen <kuanlinchentw@gmail.com>
   NDS32		   Wei-Cheng Wang <cole945@gmail.com>
-  Nios II	   Sandra Loosemore <sloosemore@baylibre.com>
-  Nios II	   Andrew Jenner <andrew@codesourcery.com>
   OR1K		   Christian Svensson <blue@cmd.nu>
   OR1K		   Stefan Kristiansson <stefan.kristiansson@saunalahti.fi>
   OR1K		   Stafford Horne <shorne@gmail.com>
-  PPC		   Peter Bergner <bergner@vnet.ibm.com>
+  PPC		   Peter Bergner <bergner@linux.ibm.com>
   PPC vector ext   Aldy Hernandez <aldyh@redhat.com>
   RISC-V	   Palmer Dabbelt <palmer@dabbelt.com>
   RISC-V	   Andrew Waterman <andrew@sifive.com>
@@ -335,7 +331,7 @@ Having selected the branch name, create the branch as follows:
 Please do not commit any patches to a branch you did not create
 without the explicit permission of the person who created the branch.
 
-Copyright (C) 2012-2024 Free Software Foundation, Inc.
+Copyright (C) 2012-2025 Free Software Foundation, Inc.
 
 Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright

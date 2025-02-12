@@ -1,5 +1,5 @@
 /* BFD back-end data structures for ELF files.
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
    Written by Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -540,6 +540,7 @@ enum elf_target_id
   ARM_ELF_DATA,
   AVR_ELF_DATA,
   BFIN_ELF_DATA,
+  CR16_ELF_DATA,
   CRIS_ELF_DATA,
   CSKY_ELF_DATA,
   FRV_ELF_DATA,
@@ -548,31 +549,33 @@ enum elf_target_id
   I386_ELF_DATA,
   IA64_ELF_DATA,
   KVX_ELF_DATA,
-  LM32_ELF_DATA,
   LARCH_ELF_DATA,
+  LM32_ELF_DATA,
   M32R_ELF_DATA,
   M68HC11_ELF_DATA,
   M68K_ELF_DATA,
   METAG_ELF_DATA,
   MICROBLAZE_ELF_DATA,
   MIPS_ELF_DATA,
+  MMIX_ELF_DATA,
   MN10300_ELF_DATA,
   NDS32_ELF_DATA,
-  NIOS2_ELF_DATA,
   OR1K_ELF_DATA,
   PPC32_ELF_DATA,
   PPC64_ELF_DATA,
   PRU_ELF_DATA,
+  RISCV_ELF_DATA,
   S390_ELF_DATA,
+  SCORE_ELF_DATA,
   SH_ELF_DATA,
   SPARC_ELF_DATA,
   SPU_ELF_DATA,
   TIC6X_ELF_DATA,
-  X86_64_ELF_DATA,
-  XTENSA_ELF_DATA,
   TILEGX_ELF_DATA,
   TILEPRO_ELF_DATA,
-  RISCV_ELF_DATA,
+  X86_64_ELF_DATA,
+  XTENSA_ELF_DATA,
+  VAX_ELF_DATA,
   GENERIC_ELF_DATA
 };
 
@@ -695,6 +698,9 @@ struct elf_link_hash_table
 
   /* The _DYNAMIC symbol.  */
   struct elf_link_hash_entry *hdynamic;
+
+  /* The __ehdr_start symbol.  */
+  struct elf_link_hash_entry *hehdr_start;
 
   /* A pointer to information used to merge SEC_MERGE sections.  */
   void *merge_info;
@@ -2315,7 +2321,7 @@ extern unsigned long bfd_elf_gnu_hash
 extern bfd_reloc_status_type bfd_elf_generic_reloc
   (bfd *, arelent *, asymbol *, void *, asection *, bfd *, char **);
 extern bool bfd_elf_allocate_object
-  (bfd *, size_t, enum elf_target_id);
+  (bfd *, size_t);
 extern bool bfd_elf_make_object
   (bfd *);
 extern bool bfd_elf_mkcorefile
@@ -2343,7 +2349,7 @@ extern bool _bfd_elf_link_hash_table_init
   (struct elf_link_hash_table *, bfd *,
    struct bfd_hash_entry *(*)
      (struct bfd_hash_entry *, struct bfd_hash_table *, const char *),
-   unsigned int, enum elf_target_id);
+   unsigned int);
 extern bool _bfd_elf_slurp_version_tables
   (bfd *, bool);
 extern bool _bfd_elf_merge_sections
@@ -3146,6 +3152,9 @@ extern bool _bfd_elf_link_mmap_section_contents
   (bfd *abfd, asection *section, bfd_byte **buf);
 extern void _bfd_elf_link_munmap_section_contents
   (asection *);
+
+extern struct elf_link_hash_entry * _bfd_elf_get_link_hash_entry
+  (struct elf_link_hash_entry **, unsigned int, Elf_Internal_Shdr *);
 
 /* Large common section.  */
 extern asection _bfd_elf_large_com_section;

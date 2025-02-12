@@ -1,5 +1,5 @@
 /* tc-nds32.c -- Assemble for the nds32
-   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+   Copyright (C) 2012-2025 Free Software Foundation, Inc.
    Contributed by Andes Technology Corporation.
 
    This file is part of GAS, the GNU Assembler.
@@ -3452,7 +3452,7 @@ nds32_lookup_pseudo_opcode (const char *str)
 
   for (i = 0; i < maxlen; i++)
     {
-      if (ISSPACE (op[i] = str[i]))
+      if (is_whitespace (op[i] = str[i]))
 	break;
     }
   op[i] = '\0';
@@ -4093,7 +4093,7 @@ nds32_relax_relocs (int relax)
     {"", "",};
 
   name = input_line_pointer;
-  while (*input_line_pointer && !ISSPACE (*input_line_pointer))
+  while (*input_line_pointer && !is_whitespace (*input_line_pointer))
     input_line_pointer++;
   saved_char = *input_line_pointer;
   *input_line_pointer = 0;
@@ -4230,7 +4230,7 @@ nds32_relax_hint (int mode ATTRIBUTE_UNUSED)
   struct relax_hint_id *record_id;
 
   name = input_line_pointer;
-  while (*input_line_pointer && !ISSPACE (*input_line_pointer))
+  while (*input_line_pointer && !is_whitespace (*input_line_pointer))
     input_line_pointer++;
   saved_char = *input_line_pointer;
   *input_line_pointer = 0;
@@ -4363,7 +4363,7 @@ nds32_flag (int ignore ATTRIBUTE_UNUSED)
 
   /* Skip whitespaces.  */
   name = input_line_pointer;
-  while (*input_line_pointer && !ISSPACE (*input_line_pointer))
+  while (*input_line_pointer && !is_whitespace (*input_line_pointer))
     input_line_pointer++;
   saved_char = *input_line_pointer;
   *input_line_pointer = 0;
@@ -4400,7 +4400,7 @@ ict_model (int ignore ATTRIBUTE_UNUSED)
 
   /* Skip whitespaces.  */
   name = input_line_pointer;
-  while (*input_line_pointer && !ISSPACE (*input_line_pointer))
+  while (*input_line_pointer && !is_whitespace (*input_line_pointer))
     input_line_pointer++;
   saved_char = *input_line_pointer;
   *input_line_pointer = 0;
@@ -7826,9 +7826,8 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixP)
   arelent *reloc;
   bfd_reloc_code_real_type code;
 
-  reloc = XNEW (arelent);
-
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixP->fx_addsy);
   reloc->address = fixP->fx_frag->fr_address + fixP->fx_where;
 

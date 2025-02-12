@@ -1,5 +1,5 @@
 /* gen-sframe.c - Support for generating SFrame section.
-   Copyright (C) 2022-2024 Free Software Foundation, Inc.
+   Copyright (C) 2022-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -65,6 +65,14 @@
 #ifndef SFRAME_FRE_TYPE_SELECTION_OPT
 # define SFRAME_FRE_TYPE_SELECTION_OPT 1
 #endif
+
+/* List of SFrame FDE entries.  */
+
+static struct sframe_func_entry *all_sframe_fdes = NULL;
+
+/* Tail of the list to add to.  */
+
+static struct sframe_func_entry **last_sframe_fde = &all_sframe_fdes;
 
 /* Emit a single byte into the current segment.  */
 
@@ -487,6 +495,50 @@ create_func_info_exp (expressionS *cexp, symbolS *dw_fde_end_addrS,
 
 #endif
 
+static struct sframe_row_entry*
+sframe_row_entry_new (void)
+{
+  struct sframe_row_entry *fre = XCNEW (struct sframe_row_entry);
+  /* Reset cfa_base_reg to -1.  A value of 0 will imply some valid register
+     for the supported arches.  */
+  fre->cfa_base_reg = SFRAME_FRE_BASE_REG_INVAL;
+  fre->merge_candidate = true;
+  /* Reset the mangled RA status bit to zero by default.  We will
+     initialize it in sframe_row_entry_initialize () with the sticky
+     bit if set.  */
+  fre->mangled_ra_p = false;
+
+  return fre;
+}
+
+static void
+sframe_row_entry_free (struct sframe_row_entry *fre)
+{
+  while (fre)
+    {
+      struct sframe_row_entry *fre_next = fre->next;
+      XDELETE (fre);
+      fre = fre_next;
+    }
+}
+
+/* Allocate an SFrame FDE.  */
+
+static struct sframe_func_entry*
+sframe_fde_alloc (void)
+{
+  return XCNEW (struct sframe_func_entry);
+}
+
+/* Free up the SFrame FDE.  */
+
+static void
+sframe_fde_free (struct sframe_func_entry *sframe_fde)
+{
+  sframe_row_entry_free (sframe_fde->sframe_fres);
+  XDELETE (sframe_fde);
+}
+
 static void
 output_sframe_row_entry (symbolS *fde_start_addr,
 			 symbolS *fde_end_addr,
@@ -624,7 +676,7 @@ output_sframe_internal (void)
   symbolS *end_of_frame_section;
   symbolS *start_of_func_desc_section;
   symbolS *start_of_fre_section;
-  struct sframe_func_entry *sframe_fde;
+  struct sframe_func_entry *sframe_fde, *sframe_fde_next;
   struct sframe_row_entry *sframe_fre;
   unsigned char abi_arch = 0;
   int fixed_fp_offset = SFRAME_CFA_FIXED_FP_INVALID;
@@ -636,7 +688,6 @@ output_sframe_internal (void)
   /* The function descriptor entries as dumped by the assembler are not
      sorted on PCs.  */
   unsigned char sframe_flags = 0;
-  sframe_flags |= !SFRAME_F_FDE_SORTED;
 
   unsigned int num_fdes = get_num_sframe_fdes ();
   unsigned int num_fres = get_num_sframe_fres ();
@@ -726,7 +777,7 @@ output_sframe_internal (void)
   i = 0;
   sframe_fde = all_sframe_fdes;
 
-  for (sframe_fde = all_sframe_fdes; sframe_fde; sframe_fde = sframe_fde->next)
+  for (sframe_fde = all_sframe_fdes; sframe_fde; sframe_fde = sframe_fde_next)
     {
       for (sframe_fre = sframe_fde->sframe_fres;
 	   sframe_fre;
@@ -738,7 +789,11 @@ output_sframe_internal (void)
 				   sframe_fre);
 	  i++;
 	}
+      sframe_fde_next = sframe_fde->next;
+      sframe_fde_free (sframe_fde);
     }
+  all_sframe_fdes = NULL;
+  last_sframe_fde = &all_sframe_fdes;
 
   symbol_set_value_now (end_of_frame_section);
 
@@ -747,14 +802,6 @@ output_sframe_internal (void)
   free (fre_symbols);
   fre_symbols = NULL;
 }
-
-/* List of SFrame FDE entries.  */
-
-struct sframe_func_entry *all_sframe_fdes;
-
-/* Tail of the list to add to.  */
-
-static struct sframe_func_entry **last_sframe_fde = &all_sframe_fdes;
 
 static unsigned int
 get_num_sframe_fdes (void)
@@ -780,35 +827,6 @@ get_num_sframe_fres (void)
     total_fres += sframe_fde->num_fres;
 
   return total_fres;
-}
-
-/* Allocate an SFrame FDE.  */
-
-static struct sframe_func_entry*
-sframe_fde_alloc (void)
-{
-  struct sframe_func_entry *sframe_fde = XCNEW (struct sframe_func_entry);
-  return sframe_fde;
-}
-
-/* Link the SFrame FDE in.  */
-
-static int
-sframe_fde_link (struct sframe_func_entry *sframe_fde)
-{
-  *last_sframe_fde = sframe_fde;
-  last_sframe_fde = &sframe_fde->next;
-
-  return 0;
-}
-
-/* Free up the SFrame FDE.  */
-
-static void
-sframe_fde_free (struct sframe_func_entry *sframe_fde)
-{
-  XDELETE (sframe_fde);
-  sframe_fde = NULL;
 }
 
 /* SFrame translation context functions.  */
@@ -840,22 +858,9 @@ sframe_xlate_ctx_init (struct sframe_xlate_ctx *xlate_ctx)
 static void
 sframe_xlate_ctx_cleanup (struct sframe_xlate_ctx *xlate_ctx)
 {
-  struct sframe_row_entry *fre, *fre_next;
-
-  if (xlate_ctx->num_xlate_fres)
-    {
-      fre = xlate_ctx->first_fre;
-      while (fre)
-	{
-	  fre_next = fre->next;
-	  XDELETE (fre);
-	  fre = fre_next;
-	}
-    }
-
+  sframe_row_entry_free (xlate_ctx->first_fre);
+  XDELETE (xlate_ctx->remember_fre);
   XDELETE (xlate_ctx->cur_fre);
-
-  sframe_xlate_ctx_init (xlate_ctx);
 }
 
 /* Transfer the state from the SFrame translation context to the SFrame FDE.  */
@@ -867,21 +872,6 @@ sframe_xlate_ctx_finalize (struct sframe_xlate_ctx *xlate_ctx,
   sframe_fde->dw_fde = xlate_ctx->dw_fde;
   sframe_fde->sframe_fres = xlate_ctx->first_fre;
   sframe_fde->num_fres = xlate_ctx->num_xlate_fres;
-}
-
-static struct sframe_row_entry*
-sframe_row_entry_new (void)
-{
-  struct sframe_row_entry *fre = XCNEW (struct sframe_row_entry);
-  /* Reset cfa_base_reg to -1.  A value of 0 will imply some valid register
-     for the supported arches.  */
-  fre->cfa_base_reg = SFRAME_FRE_BASE_REG_INVAL;
-  fre->merge_candidate = true;
-  /* Reset the mangled RA status bit to zero by default.  We will initialize it in
-     sframe_row_entry_initialize () with the sticky bit if set.  */
-  fre->mangled_ra_p = false;
-
-  return fre;
 }
 
 /* Add the given FRE in the list of frame row entries in the given FDE
@@ -1013,11 +1003,11 @@ sframe_xlate_do_def_cfa (struct sframe_xlate_ctx *xlate_ctx,
   /* Define the current CFA rule to use the provided register and
      offset.  However, if the register is not FP/SP, skip creating
      SFrame stack trace info for the function.  */
-  if (cfi_insn->u.r != SFRAME_CFA_SP_REG
-      && cfi_insn->u.r != SFRAME_CFA_FP_REG)
+  if (cfi_insn->u.ri.reg != SFRAME_CFA_SP_REG
+      && cfi_insn->u.ri.reg != SFRAME_CFA_FP_REG)
     {
       as_warn (_("skipping SFrame FDE; non-SP/FP register %u in .cfi_def_cfa"),
-	       cfi_insn->u.r);
+	       cfi_insn->u.ri.reg);
       return SFRAME_XLATE_ERR_NOTREPRESENTED; /* Not represented.  */
     }
   sframe_fre_set_cfa_base_reg (cur_fre, cfi_insn->u.ri.reg);
@@ -1050,7 +1040,7 @@ sframe_xlate_do_def_cfa_register (struct sframe_xlate_ctx *xlate_ctx,
 	       cfi_insn->u.r);
       return SFRAME_XLATE_ERR_NOTREPRESENTED; /* Not represented.  */
     }
-  sframe_fre_set_cfa_base_reg (cur_fre, cfi_insn->u.ri.reg);
+  sframe_fre_set_cfa_base_reg (cur_fre, cfi_insn->u.r);
   sframe_fre_set_cfa_offset (cur_fre, last_fre->cfa_offset);
   cur_fre->merge_candidate = false;
 
@@ -1107,7 +1097,7 @@ sframe_xlate_do_offset (struct sframe_xlate_ctx *xlate_ctx,
   /* Change the rule for the register indicated by the register number to
      be the specified offset.  */
   /* Ignore SP reg, as it can be recovered from the CFA tracking info.  */
-  if (cfi_insn->u.r == SFRAME_CFA_FP_REG)
+  if (cfi_insn->u.ri.reg == SFRAME_CFA_FP_REG)
     {
       gas_assert (!cur_fre->base_reg);
       sframe_fre_set_bp_track (cur_fre, cfi_insn->u.ri.offset);
@@ -1115,7 +1105,7 @@ sframe_xlate_do_offset (struct sframe_xlate_ctx *xlate_ctx,
     }
 #ifdef SFRAME_FRE_RA_TRACKING
   else if (sframe_ra_tracking_p ()
-	   && cfi_insn->u.r == SFRAME_CFA_RA_REG)
+	   && cfi_insn->u.ri.reg == SFRAME_CFA_RA_REG)
     {
       sframe_fre_set_ra_track (cur_fre, cfi_insn->u.ri.offset);
       cur_fre->merge_candidate = false;
@@ -1134,18 +1124,18 @@ sframe_xlate_do_val_offset (struct sframe_xlate_ctx *xlate_ctx ATTRIBUTE_UNUSED,
 			    struct cfi_insn_data *cfi_insn)
 {
   /* Previous value of register is CFA + offset.  However, if the specified
-     register is not interesting (FP or RA reg), the current DW_CFA_val_offset
-     instruction can be safely skipped without sacrificing the asynchronicity of
-     stack trace information.  */
-  if (cfi_insn->u.r == SFRAME_CFA_FP_REG
+     register is not interesting (SP, FP, or RA reg), the current
+     DW_CFA_val_offset instruction can be safely skipped without sacrificing
+     the asynchronicity of stack trace information.  */
+  if (cfi_insn->u.ri.reg == SFRAME_CFA_FP_REG
 #ifdef SFRAME_FRE_RA_TRACKING
-      || (sframe_ra_tracking_p () && cfi_insn->u.r == SFRAME_CFA_RA_REG)
+      || (sframe_ra_tracking_p () && cfi_insn->u.ri.reg == SFRAME_CFA_RA_REG)
 #endif
-      /* Ignore SP reg, as it can be recovered from the CFA tracking info.  */
-      )
+      /* Ignore SP reg, if offset matches assumed default rule.  */
+      || (cfi_insn->u.ri.reg == SFRAME_CFA_SP_REG && cfi_insn->u.ri.offset != 0))
     {
       as_warn (_("skipping SFrame FDE; %s register %u in .cfi_val_offset"),
-	       sframe_register_name (cfi_insn->u.r), cfi_insn->u.r);
+	       sframe_register_name (cfi_insn->u.ri.reg), cfi_insn->u.ri.reg);
       return SFRAME_XLATE_ERR_NOTREPRESENTED; /* Not represented.  */
     }
 
@@ -1282,8 +1272,27 @@ sframe_xlate_do_aarch64_negate_ra_state (struct sframe_xlate_ctx *xlate_ctx,
   return SFRAME_XLATE_OK;
 }
 
+/* Translate DW_CFA_AARCH64_negate_ra_state_with_pc into SFrame context.
+   Return SFRAME_XLATE_OK if success.  */
+
+static int
+sframe_xlate_do_aarch64_negate_ra_state_with_pc (struct sframe_xlate_ctx *xlate_ctx ATTRIBUTE_UNUSED,
+						 struct cfi_insn_data *cfi_insn ATTRIBUTE_UNUSED)
+{
+  as_warn (_("skipping SFrame FDE; .cfi_negate_ra_state_with_pc"));
+  /* The used signing method should be encoded inside the FDE in SFrame v3.
+     For now, PAuth_LR extension is not supported with SFrame.  */
+  return SFRAME_XLATE_ERR_NOTREPRESENTED;  /* Not represented.  */
+}
+
 /* Translate DW_CFA_GNU_window_save into SFrame context.
-   DW_CFA_AARCH64_negate_ra_state is multiplexed with DW_CFA_GNU_window_save.
+   DW_CFA_GNU_window_save is a DWARF Sparc extension, but is multiplexed with a
+   directive of DWARF AArch64 extension: DW_CFA_AARCH64_negate_ra_state.
+   The AArch64 backend of GCC 14 and older versions was emitting mistakenly the
+   Sparc CFI directive (.cfi_window_save).  From GCC 15, the AArch64 backend
+   only emits .cfi_negate_ra_state.  For backward compatibility, the handler for
+   .cfi_window_save needs to check whether the directive was used in a AArch64
+   ABI context or not.
    Return SFRAME_XLATE_OK if success.  */
 
 static int
@@ -1390,6 +1399,9 @@ sframe_do_cfi_insn (struct sframe_xlate_ctx *xlate_ctx,
        DW_CFA_GNU_window_save.  */
     case DW_CFA_GNU_window_save:
       err = sframe_xlate_do_gnu_window_save (xlate_ctx, cfi_insn);
+      break;
+    case DW_CFA_AARCH64_negate_ra_state_with_pc:
+      err = sframe_xlate_do_aarch64_negate_ra_state_with_pc (xlate_ctx, cfi_insn);
       break;
     case DW_CFA_register:
       err = sframe_xlate_do_register (xlate_ctx, cfi_insn);
@@ -1521,7 +1533,8 @@ create_sframe_all (void)
 	  /* All done.  Transfer the state from the SFrame translation
 	     context to the SFrame FDE.  */
 	  sframe_xlate_ctx_finalize (xlate_ctx, sframe_fde);
-	  sframe_fde_link (sframe_fde);
+	  *last_sframe_fde = sframe_fde;
+	  last_sframe_fde = &sframe_fde->next;
 	}
     }
 

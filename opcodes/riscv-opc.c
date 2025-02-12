@@ -1,5 +1,5 @@
 /* RISC-V opcode list
-   Copyright (C) 2011-2024 Free Software Foundation, Inc.
+   Copyright (C) 2011-2025 Free Software Foundation, Inc.
 
    Contributed by Andrew Waterman (andrew@sifive.com).
    Based on MIPS target.
@@ -362,6 +362,25 @@ match_sreg1_not_eq_sreg2 (const struct riscv_opcode *op, insn_t insn)
       && (EXTRACT_OPERAND (SREG1, insn) != EXTRACT_OPERAND (SREG2, insn));
 }
 
+/* This is used for cm.jt. This requires index operand to be less than 32.  */
+
+static int
+match_cm_jt (const struct riscv_opcode *op, insn_t insn)
+{
+  return match_opcode (op, insn)
+    && EXTRACT_ZCMT_INDEX (insn) < 32;
+}
+
+/* This is used for cm.jalt. This requires index operand to be in 32 to 255.  */
+
+static int
+match_cm_jalt (const struct riscv_opcode *op, insn_t insn)
+{
+  return match_opcode (op, insn)
+    && EXTRACT_ZCMT_INDEX (insn) >= 32
+    && EXTRACT_ZCMT_INDEX (insn) < 256;
+}
+
 /* The order of overloaded instructions matters.  Label arguments and
    register arguments look the same. Instructions that can have either
    for arguments must apear in the correct order in this table for the
@@ -371,6 +390,30 @@ match_sreg1_not_eq_sreg2 (const struct riscv_opcode *op, insn_t insn)
 
    Because of the lookup algorithm used, entries with the same opcode
    name must be contiguous.  */
+
+static int
+match_rs1_x1x5_opcode (const struct riscv_opcode *op,
+		       insn_t insn)
+{
+  int rs1 = (insn & MASK_RS1) >> OP_SH_RS1;
+  return match_opcode (op, insn) && (rs1 == 1 || rs1 == 5);
+}
+
+static int
+match_rs2_x1x5_opcode (const struct riscv_opcode *op,
+		       insn_t insn)
+{
+  int rs2 = (insn & MASK_RS2) >> OP_SH_RS2;
+  return match_opcode (op, insn) && (rs2 == 1 || rs2 == 5);
+}
+
+static int
+match_rd_x1x5_opcode (const struct riscv_opcode *op,
+		      insn_t insn)
+{
+  int rd = (insn & MASK_RD) >> OP_SH_RD;
+  return match_opcode (op, insn) && (rd == 1 || rd == 5);
+}
 
 const struct riscv_opcode riscv_opcodes[] =
 {
@@ -422,6 +465,7 @@ const struct riscv_opcode riscv_opcodes[] =
 {"jal",         0, INSN_CLASS_I, "d,a",       MATCH_JAL, MASK_JAL, match_opcode, INSN_JSR },
 {"call",        0, INSN_CLASS_I, "d,c",       (X_T1 << OP_SH_RS1), (int) M_CALL, NULL, INSN_MACRO },
 {"call",        0, INSN_CLASS_I, "c",         (X_RA << OP_SH_RS1)|(X_RA << OP_SH_RD), (int) M_CALL, NULL, INSN_MACRO },
+{"tail",        0, INSN_CLASS_ZICFILP, "c",   (X_T2 << OP_SH_RS1), (int) M_CALL, NULL, INSN_MACRO },
 {"tail",        0, INSN_CLASS_I, "c",         (X_T1 << OP_SH_RS1), (int) M_CALL, NULL, INSN_MACRO },
 {"jump",        0, INSN_CLASS_I, "c,s",       0, (int) M_CALL, match_rs1_nonzero, INSN_MACRO },
 {"nop",         0, INSN_CLASS_C, "",          MATCH_C_ADDI, 0xffff, match_opcode, INSN_ALIAS },
@@ -527,6 +571,10 @@ const struct riscv_opcode riscv_opcodes[] =
 {"or",          0, INSN_CLASS_C, "Cs,Cw,Ct",  MATCH_C_OR, MASK_C_OR, match_opcode, INSN_ALIAS },
 {"or",          0, INSN_CLASS_C, "Cs,Ct,Cw",  MATCH_C_OR, MASK_C_OR, match_opcode, INSN_ALIAS },
 {"or",          0, INSN_CLASS_I, "d,s,t",     MATCH_OR, MASK_OR, match_opcode, 0 },
+
+/* Zicfilp instructions.  */
+{"lpad",        0, INSN_CLASS_ZICFILP, "u",   MATCH_LPAD, MASK_LPAD, match_opcode, 0 },
+
 {"auipc",       0, INSN_CLASS_I, "d,u",       MATCH_AUIPC, MASK_AUIPC, match_opcode, 0 },
 {"seqz",        0, INSN_CLASS_I, "d,s",       MATCH_SLTIU|ENCODE_ITYPE_IMM (1), MASK_SLTIU | MASK_IMM, match_opcode, INSN_ALIAS },
 {"snez",        0, INSN_CLASS_I, "d,t",       MATCH_SLTU, MASK_SLTU|MASK_RS1, match_opcode, INSN_ALIAS },
@@ -1130,6 +1178,23 @@ const struct riscv_opcode riscv_opcodes[] =
 /* Zicond instructions.  */
 {"czero.eqz",  0, INSN_CLASS_ZICOND, "d,s,t", MATCH_CZERO_EQZ, MASK_CZERO_EQZ, match_opcode, 0 },
 {"czero.nez",  0, INSN_CLASS_ZICOND, "d,s,t", MATCH_CZERO_NEZ, MASK_CZERO_NEZ, match_opcode, 0 },
+
+/* Zicfiss instructions.  */
+{"sspush",            0, INSN_CLASS_ZICFISS_AND_ZCMOP, "d", MATCH_C_SSPUSH, MASK_C_SSPUSH, match_rd_x1x5_opcode, INSN_ALIAS },
+{"sspush",            0, INSN_CLASS_ZICFISS,           "t", MATCH_SSPUSH, MASK_SSPUSH, match_rs2_x1x5_opcode, 0 },
+{"sspopchk",          0, INSN_CLASS_ZICFISS_AND_ZCMOP, "d", MATCH_C_SSPOPCHK, MASK_C_SSPOPCHK, match_rd_x1x5_opcode, INSN_ALIAS },
+{"sspopchk",          0, INSN_CLASS_ZICFISS,           "s", MATCH_SSPOPCHK, MASK_SSPOPCHK, match_rs1_x1x5_opcode, 0 },
+{"c.sspush",          0, INSN_CLASS_ZICFISS_AND_ZCMOP, "d", MATCH_C_SSPUSH, MASK_C_SSPUSH, match_rd_x1x5_opcode, 0 },
+{"c.sspopchk",        0, INSN_CLASS_ZICFISS_AND_ZCMOP, "d", MATCH_C_SSPOPCHK, MASK_C_SSPOPCHK, match_rd_x1x5_opcode, 0 },
+{"ssrdp",             0, INSN_CLASS_ZICFISS,           "d", MATCH_SSRDP, MASK_SSRDP, match_opcode, 0 },
+{"ssamoswap.w",      32, INSN_CLASS_ZICFISS,    "d,t,0(s)", MATCH_SSAMOSWAP_W, MASK_SSAMOSWAP_W|MASK_AQRL, match_opcode, INSN_DREF|INSN_4_BYTE },
+{"ssamoswap.w.aq",   32, INSN_CLASS_ZICFISS,    "d,t,0(s)", MATCH_SSAMOSWAP_W|MASK_AQ, MASK_SSAMOSWAP_W|MASK_AQRL, match_opcode, INSN_DREF|INSN_4_BYTE },
+{"ssamoswap.w.rl",   32, INSN_CLASS_ZICFISS,    "d,t,0(s)", MATCH_SSAMOSWAP_W|MASK_RL, MASK_SSAMOSWAP_W|MASK_AQRL, match_opcode, INSN_DREF|INSN_4_BYTE },
+{"ssamoswap.w.aqrl", 32, INSN_CLASS_ZICFISS,    "d,t,0(s)", MATCH_SSAMOSWAP_W|MASK_AQRL, MASK_SSAMOSWAP_W|MASK_AQRL, match_opcode, INSN_DREF|INSN_4_BYTE },
+{"ssamoswap.d",      64, INSN_CLASS_ZICFISS,    "d,t,0(s)", MATCH_SSAMOSWAP_D, MASK_SSAMOSWAP_D|MASK_AQRL, match_opcode, INSN_DREF|INSN_8_BYTE },
+{"ssamoswap.d.aq",   64, INSN_CLASS_ZICFISS,    "d,t,0(s)", MATCH_SSAMOSWAP_D|MASK_AQ, MASK_SSAMOSWAP_D|MASK_AQRL, match_opcode, INSN_DREF|INSN_8_BYTE },
+{"ssamoswap.d.rl",   64, INSN_CLASS_ZICFISS,    "d,t,0(s)", MATCH_SSAMOSWAP_D|MASK_RL, MASK_SSAMOSWAP_D|MASK_AQRL, match_opcode, INSN_DREF|INSN_8_BYTE },
+{"ssamoswap.d.aqrl", 64, INSN_CLASS_ZICFISS,    "d,t,0(s)", MATCH_SSAMOSWAP_D|MASK_AQRL, MASK_SSAMOSWAP_D|MASK_AQRL, match_opcode, INSN_DREF|INSN_8_BYTE },
 
 /* Zimop instructions.  */
 {"mop.r.0",    0, INSN_CLASS_ZIMOP, "d,s",    MATCH_MOP_R_0,  MASK_MOP_R_0,  match_opcode, 0 },
@@ -2196,6 +2261,10 @@ const struct riscv_opcode riscv_opcodes[] =
 {"cm.mva01s",  0,  INSN_CLASS_ZCMP, "Wc1,Wc2",    MATCH_CM_MVA01S, MASK_CM_MVA01S, match_opcode, 0 },
 {"cm.mvsa01",  0,  INSN_CLASS_ZCMP, "Wc1,Wc2",    MATCH_CM_MVSA01, MASK_CM_MVSA01, match_sreg1_not_eq_sreg2, 0 },
 
+/* Zcmt instructions */
+{"cm.jt",      0,  INSN_CLASS_ZCMT, "WcI", MATCH_CM_JT, MASK_CM_JT, match_cm_jt, 0 },
+{"cm.jalt",    0,  INSN_CLASS_ZCMT, "Wci", MATCH_CM_JALT, MASK_CM_JALT, match_cm_jalt, 0 },
+
 /* Supervisor instructions.  */
 {"csrr",       0, INSN_CLASS_ZICSR, "d,E",   MATCH_CSRRS, MASK_CSRRS|MASK_RS1, match_opcode, INSN_ALIAS },
 {"csrwi",      0, INSN_CLASS_ZICSR, "E,Z",   MATCH_CSRRWI, MASK_CSRRWI|MASK_RD, match_opcode, INSN_ALIAS },
@@ -2221,12 +2290,13 @@ const struct riscv_opcode riscv_opcodes[] =
 {"hret",       0, INSN_CLASS_I, "",    MATCH_HRET, MASK_HRET, match_opcode, 0 },
 {"mret",       0, INSN_CLASS_I, "",    MATCH_MRET, MASK_MRET, match_opcode, 0 },
 {"dret",       0, INSN_CLASS_I, "",    MATCH_DRET, MASK_DRET, match_opcode, 0 },
-{"sfence.vm",  0, INSN_CLASS_I, "",    MATCH_SFENCE_VM, MASK_SFENCE_VM | MASK_RS1, match_opcode, 0 },
-{"sfence.vm",  0, INSN_CLASS_I, "s",   MATCH_SFENCE_VM, MASK_SFENCE_VM, match_opcode, 0 },
 {"sfence.vma", 0, INSN_CLASS_I, "",    MATCH_SFENCE_VMA, MASK_SFENCE_VMA|MASK_RS1|MASK_RS2, match_opcode, INSN_ALIAS },
 {"sfence.vma", 0, INSN_CLASS_I, "s",   MATCH_SFENCE_VMA, MASK_SFENCE_VMA|MASK_RS2, match_opcode, INSN_ALIAS },
 {"sfence.vma", 0, INSN_CLASS_I, "s,t", MATCH_SFENCE_VMA, MASK_SFENCE_VMA, match_opcode, 0 },
 {"wfi",        0, INSN_CLASS_I, "",    MATCH_WFI, MASK_WFI, match_opcode, 0 },
+
+/* Smctr/Ssctr instruction.  */
+{"sctrclr", 0, INSN_CLASS_SMCTR_OR_SSCTR, "", MATCH_SCTRCLR, MASK_SCTRCLR, match_opcode, 0 },
 
 /* Svinval instructions.  */
 {"sinval.vma",      0, INSN_CLASS_SVINVAL, "s,t", MATCH_SINVAL_VMA, MASK_SINVAL_VMA, match_opcode, 0 },
@@ -3425,6 +3495,20 @@ const struct riscv_opcode riscv_opcodes[] =
 
 /* Vendor-specific (SiFive) cease instruction.  */
 {"sf.cease", 0, INSN_CLASS_XSFCEASE, "", MATCH_SF_CEASE, MASK_SF_CEASE, match_opcode, 0 },
+
+/* SiFive custom int8 matrix-multiply instructions.  */
+{"sf.vqmaccu.4x8x4",  0, INSN_CLASS_XSFVQMACCQOQ, "Vd,Vs,Vt", MATCH_SFVQMACCU4X8X4, MASK_SFVQMACCU4X8X4, match_opcode, 0},
+{"sf.vqmacc.4x8x4",   0, INSN_CLASS_XSFVQMACCQOQ, "Vd,Vs,Vt", MATCH_SFVQMACC4X8X4, MASK_SFVQMACC4X8X4, match_opcode, 0},
+{"sf.vqmaccus.4x8x4", 0, INSN_CLASS_XSFVQMACCQOQ, "Vd,Vs,Vt", MATCH_SFVQMACCUS4X8X4, MASK_SFVQMACCUS4X8X4, match_opcode, 0},
+{"sf.vqmaccsu.4x8x4", 0, INSN_CLASS_XSFVQMACCQOQ, "Vd,Vs,Vt", MATCH_SFVQMACCSU4X8X4, MASK_SFVQMACCSU4X8X4, match_opcode, 0},
+{"sf.vqmaccu.2x8x2",  0, INSN_CLASS_XSFVQMACCDOD, "Vd,Vs,Vt", MATCH_SFVQMACCU2X8X2, MASK_SFVQMACCU2X8X2, match_opcode, 0},
+{"sf.vqmacc.2x8x2",   0, INSN_CLASS_XSFVQMACCDOD, "Vd,Vs,Vt", MATCH_SFVQMACC2X8X2, MASK_SFVQMACC2X8X2, match_opcode, 0},
+{"sf.vqmaccus.2x8x2", 0, INSN_CLASS_XSFVQMACCDOD, "Vd,Vs,Vt", MATCH_SFVQMACCUS2X8X2, MASK_SFVQMACCUS2X8X2, match_opcode, 0},
+{"sf.vqmaccsu.2x8x2", 0, INSN_CLASS_XSFVQMACCDOD, "Vd,Vs,Vt", MATCH_SFVQMACCSU2X8X2, MASK_SFVQMACCSU2X8X2, match_opcode, 0},
+
+/* SiFive FP32-to-int8 ranged clip instructions (Xsfvfnrclipxfqf).  */
+{"sf.vfnrclip.xu.f.qf", 0, INSN_CLASS_XSFVFNRCLIPXFQF, "Vd,Vt,S", MATCH_SFVFNRCLIPXUFQF, MASK_SFVFNRCLIPXUFQF, match_opcode, 0},
+{"sf.vfnrclip.x.f.qf",  0, INSN_CLASS_XSFVFNRCLIPXFQF, "Vd,Vt,S", MATCH_SFVFNRCLIPXFQF, MASK_SFVFNRCLIPXFQF, match_opcode, 0},
 
 /* Terminate the list.  */
 {0, 0, INSN_CLASS_NONE, 0, 0, 0, 0, 0}

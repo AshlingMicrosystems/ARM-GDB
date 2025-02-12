@@ -1,6 +1,6 @@
 /* tc-kvx.c -- Assemble for the KVX ISA
 
-   Copyright (C) 2009-2024 Free Software Foundation, Inc.
+   Copyright (C) 2009-2025 Free Software Foundation, Inc.
    Contributed by Kalray SA.
 
    This file is part of GAS.
@@ -1279,7 +1279,7 @@ md_assemble (char *line)
   if (get_byte_counter (now_seg) & 3)
     as_fatal ("code segment not word aligned in md_assemble");
 
-  while (line_cursor && line_cursor[0] && (line_cursor[0] == ' '))
+  while (is_whitespace (line_cursor[0]))
     line_cursor++;
 
   /* ;; was converted to "be" by line hook          */
@@ -1914,9 +1914,8 @@ tc_gen_reloc (asection * sec ATTRIBUTE_UNUSED, fixS * fixp)
   arelent *reloc;
   bfd_reloc_code_real_type code;
 
-  reloc = (arelent *) xmalloc (sizeof (arelent));
-
-  reloc->sym_ptr_ptr = (asymbol **) xmalloc (sizeof (asymbol *));
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
 
@@ -2126,7 +2125,7 @@ kvx_md_start_line_hook (void)
 {
   char *t;
 
-  for (t = input_line_pointer; t && t[0] == ' '; t++);
+  for (t = input_line_pointer; is_whitespace (t[0]); t++);
 
   /* Detect illegal syntax patterns:
    * - two bundle ends on the same line: ;; ;;
@@ -2145,9 +2144,9 @@ kvx_md_start_line_hook (void)
       while (tmp_t && tmp_t[0])
 	{
 	  while (tmp_t && tmp_t[0] &&
-		 ((tmp_t[0] == ' ') || (tmp_t[0] == '\n')))
+		 (is_whitespace (tmp_t[0]) || is_end_of_stmt (tmp_t[0])))
 	    {
-	      if (tmp_t[0] == '\n')
+	      if (is_end_of_stmt (tmp_t[0]))
 		newline_seen = true;
 	      tmp_t++;
 	    }

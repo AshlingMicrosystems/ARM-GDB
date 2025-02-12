@@ -327,7 +327,7 @@ i[34567]86-*-linux*)
 	;;
 i[34567]86-*-gnu*)
 	# Target: Intel 386 running the GNU Hurd
-	gdb_target_obs="i386-gnu-tdep.o solib-svr4.o"
+	gdb_target_obs="i386-gnu-tdep.o glibc-tdep.o solib-svr4.o"
 	;;
 i[34567]86-*-cygwin*)
 	# Target: Intel 386 running win32
@@ -363,7 +363,7 @@ lm32-*-*)
 loongarch*-*-linux*)
 	# Target: LoongArch running Linux
 	gdb_target_obs="loongarch-linux-tdep.o glibc-tdep.o \
-			linux-tdep.o solib-svr4.o"
+			linux-tdep.o solib-svr4.o linux-record.o"
 	;;
 
 m32c-*-*)
@@ -464,17 +464,6 @@ msp430-*-elf*)
 nds32*-*-elf)
 	# Target: AndesTech NDS32 core
 	gdb_target_obs="nds32-tdep.o"
-	;;
-
-nios2*-*-linux*)
-	# Target: Altera Nios II running Linux
-	gdb_target_obs="nios2-tdep.o nios2-linux-tdep.o solib-svr4.o \
-			symfile-mem.o glibc-tdep.o linux-tdep.o"
-	;;
-
-nios2*-*-*)
-	# Target: Altera Nios II bare-metal
-	gdb_target_obs="nios2-tdep.o"
 	;;
 
 or1k*-*-linux*)
@@ -744,6 +733,10 @@ x86_64-*-openbsd*)
 	;;
 x86_64-*-rtems*)
 	gdb_target_obs="${amd64_tobjs} ${i386_tobjs} i386-bsd-tdep.o"
+	;;
+x86_64-*-gnu*)
+	# Target: x86_64 running the GNU Hurd
+	gdb_target_obs="amd64-gnu-tdep.o glibc-tdep.o solib-svr4.o"
 	;;
 xtensa*-*-*linux*)
 	# Target: GNU/Linux Xtensa

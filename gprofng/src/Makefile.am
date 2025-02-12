@@ -1,6 +1,6 @@
 ## Process this file with automake to generate Makefile.in
 #
-#   Copyright (C) 2021-2024 Free Software Foundation, Inc.
+#   Copyright (C) 2021-2025 Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -111,7 +111,7 @@ AM_CPPFLAGS = $(GPROFNG_CPPFLAGS) -DLOCALEDIR=\"$(LOCALEDIR)\" \
 	-I.. -I$(srcdir) \
 	-I$(srcdir)/../common \
 	-I$(srcdir)/../../include -I$(srcdir)/../../opcodes \
-	-I../../bfd -I$(srcdir)/../../bfd $(ZLIgp-C)
+	-I../../bfd -I$(srcdir)/../../bfd $(ZLIBINC)
 AM_CFLAGS = $(GPROFNG_CFLAGS) $(PTHREAD_CFLAGS) \
 	$(GPROFNG_NO_SWITCH_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS)

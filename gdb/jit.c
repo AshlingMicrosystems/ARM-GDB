@@ -28,6 +28,7 @@
 #include "filenames.h"
 #include "frame-unwind.h"
 #include "cli/cli-cmds.h"
+#include "cli/cli-style.h"
 #include "gdbcore.h"
 #include "inferior.h"
 #include "observable.h"
@@ -664,6 +665,8 @@ jit_object_close_impl (struct gdb_symbol_callbacks *cb,
 
   objfile *objfile = objfile::make (nullptr, current_program_space,
 				    objfile_name.c_str (), OBJF_NOT_FILENAME);
+  objfile->section_offsets.push_back (0);
+  objfile->sect_index_text = 0;
   objfile->per_bfd->gdbarch = priv_data->gdbarch;
 
   for (gdb_symtab &symtab : obj->symtabs)
@@ -892,7 +895,8 @@ jit_breakpoint_re_set_internal (struct gdbarch *gdbarch, program_space *pspace)
 	}
 
       bound_minimal_symbol desc_symbol
-	= lookup_minimal_symbol_linkage (jit_descriptor_name, the_objfile);
+	= lookup_minimal_symbol_linkage (jit_descriptor_name,
+					 the_objfile, true);
       if (desc_symbol.minsym == NULL
 	  || desc_symbol.value_address () == 0)
 	{
@@ -983,8 +987,10 @@ jit_unwind_reg_get_impl (struct gdb_unwind_callbacks *cb, int regnum)
   size = register_size (frame_arch, gdb_reg);
   value = ((struct gdb_reg_value *)
 	   xmalloc (sizeof (struct gdb_reg_value) + size - 1));
-  value->defined = deprecated_frame_register_read (priv->this_frame, gdb_reg,
-						   value->value);
+  value->defined
+    = deprecated_frame_register_read (priv->this_frame, gdb_reg,
+				      gdb::make_array_view (value->value,
+							    size));
   value->size = size;
   value->free = reg_value_free_impl;
   return value;
@@ -1094,7 +1100,7 @@ jit_frame_prev_register (const frame_info_ptr &this_frame, void **cache, int reg
     return frame_unwind_got_optimized (this_frame, reg);
 
   gdbarch = priv->regcache->arch ();
-  gdb_byte *buf = (gdb_byte *) alloca (register_size (gdbarch, reg));
+  gdb::byte_vector buf (register_size (gdbarch, reg));
   enum register_status status = priv->regcache->cooked_read (reg, buf);
 
   if (status == REG_VALID)
@@ -1106,17 +1112,17 @@ jit_frame_prev_register (const frame_info_ptr &this_frame, void **cache, int reg
 /* Relay everything back to the unwinder registered by the JIT debug
    info reader.*/
 
-static const struct frame_unwind jit_frame_unwind =
-{
+static const struct frame_unwind_legacy jit_frame_unwind (
   "jit",
   NORMAL_FRAME,
+  FRAME_UNWIND_EXTENSION,
   default_frame_unwind_stop_reason,
   jit_frame_this_id,
   jit_frame_prev_register,
   NULL,
   jit_frame_sniffer,
   jit_dealloc_cache
-};
+);
 
 
 /* This is the information that is stored at jit_gdbarch_data for each
@@ -1297,6 +1303,16 @@ jit_event_handler (gdbarch *gdbarch, objfile *jiter)
     }
 }
 
+/* Implementation of "show jit-reader-directory".  */
+
+static void
+show_jit_reader_directory (const char *args, int from_tty)
+{
+  gdb_printf (_("JIT reader directory is %ps.\n"),
+	      styled_string (file_name_style.style (),
+			     jit_reader_dir.c_str ()));
+}
+
 void _initialize_jit ();
 void
 _initialize_jit ()
@@ -1328,8 +1344,8 @@ _initialize_jit ()
 Load FILE as debug info reader and unwinder for JIT compiled code.\n\
 Usage: jit-reader-load FILE\n\
 Try to load file FILE as a debug info reader (and unwinder) for\n\
-JIT compiled code.  The file is loaded from " JIT_READER_DIR ",\n\
-relocated relative to the GDB executable if required."));
+JIT compiled code.  If FILE is not an absolute file name, it is found\n\
+relative to a built-in directory.  See \"show jit-reader-directory\"."));
       set_cmd_completer (c, deprecated_filename_completer);
 
       c = add_com ("jit-reader-unload", no_class,
@@ -1338,5 +1354,11 @@ Unload the currently loaded JIT debug info reader.\n\
 Usage: jit-reader-unload\n\n\
 Do \"help jit-reader-load\" for info on loading debug info readers."));
       set_cmd_completer (c, noop_completer);
+
+      add_cmd ("jit-reader-directory", class_obscure,
+	       show_jit_reader_directory,
+	       _("Show the JIT reader directory.\n\
+This is the directory used by \"jit-reader-load\" when given\n\
+a relative file name."), &showlist);
     }
 }

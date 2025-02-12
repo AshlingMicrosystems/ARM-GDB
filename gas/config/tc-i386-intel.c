@@ -1,5 +1,5 @@
 /* tc-i386.c -- Assemble Intel syntax code for ix86/x86-64
-   Copyright (C) 2009-2024 Free Software Foundation, Inc.
+   Copyright (C) 2009-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -186,7 +186,7 @@ operatorT i386_operator (const char *name, unsigned int operands, char *pc)
     if (strcasecmp (i386_types[j].name, name) == 0)
       break;
 
-  if (i386_types[j].name && *pc == ' ')
+  if (i386_types[j].name && is_whitespace (*pc))
     {
       const char *start = ++input_line_pointer;
       char *pname;
@@ -236,13 +236,15 @@ operatorT i386_operator (const char *name, unsigned int operands, char *pc)
   return O_absent;
 }
 
-static int i386_intel_parse_name (const char *name, expressionS *e)
+static int i386_intel_parse_name (const char *name,
+				  expressionS *e,
+				  enum expr_mode mode)
 {
   unsigned int j;
 
   if (! strcmp (name, "$"))
     {
-      current_location (e);
+      current_location (e, mode);
       return 1;
     }
 
@@ -905,9 +907,7 @@ i386_intel_operand (char *operand_string, int got_a_float)
     }
 
   /* Operands for jump/call need special consideration.  */
-  if (current_templates.start->opcode_modifier.jump == JUMP
-      || current_templates.start->opcode_modifier.jump == JUMP_DWORD
-      || current_templates.start->opcode_modifier.jump == JUMP_INTERSEGMENT
+  if (current_templates.start->opcode_modifier.jump
       || current_templates.start->mnem_off == MN_jmpabs)
     {
       bool jumpabsolute = false;
@@ -1044,9 +1044,7 @@ i386_intel_operand (char *operand_string, int got_a_float)
 	     ljmp	0x9090,0x90909090
 	   */
 
-	  if ((current_templates.start->opcode_modifier.jump == JUMP_INTERSEGMENT
-	       || current_templates.start->opcode_modifier.jump == JUMP_DWORD
-	       || current_templates.start->opcode_modifier.jump == JUMP)
+	  if (current_templates.start->opcode_modifier.jump
 	      && this_operand == 1
 	      && intel_state.seg == NULL
 	      && i.mem_operands == 1

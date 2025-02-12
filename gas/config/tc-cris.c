@@ -1,5 +1,5 @@
 /* tc-cris.c -- Assembler code for the CRIS CPU core.
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
 
    Contributed by Axis Communications AB, Lund, Sweden.
    Originally written for GAS 1.38.1 by Mikael Asker.
@@ -1682,7 +1682,7 @@ cris_process_instruction (char *insn_text, struct cris_instruction *out_insnp,
 	      if (modified_char == '.' && *s == '.')
 		{
 		  if ((s[1] != 'd' && s[1] == 'D')
-		      || ! ISSPACE (s[2]))
+		      || ! is_whitespace (s[2]))
 		    break;
 		  s += 2;
 		  continue;
@@ -3231,7 +3231,7 @@ get_flags (char **cPP, int *flagsp)
 	     whitespace.  Anything else, and we consider it a failure.  */
 	  if (**cPP != ','
 	      && **cPP != 0
-	      && ! ISSPACE (**cPP))
+	      && ! is_whitespace (**cPP))
 	    return 0;
 	  else
 	    return 1;
@@ -3953,9 +3953,8 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixP)
       return 0;
     }
 
-  relP = XNEW (arelent);
-  gas_assert (relP != 0);
-  relP->sym_ptr_ptr = XNEW (asymbol *);
+  relP = notes_alloc (sizeof (arelent));
+  relP->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *relP->sym_ptr_ptr = symbol_get_bfdsym (fixP->fx_addsy);
   relP->address = fixP->fx_frag->fr_address + fixP->fx_where;
 
@@ -4279,7 +4278,7 @@ cris_arch_from_string (const char **str)
       int len = strlen (ap->name);
 
       if (strncmp (*str, ap->name, len) == 0
-	  && (str[0][len] == 0 || ISSPACE (str[0][len])))
+	  && (is_end_of_stmt (str[0][len]) || is_whitespace (str[0][len])))
 	{
 	  *str += strlen (ap->name);
 	  return ap->arch;

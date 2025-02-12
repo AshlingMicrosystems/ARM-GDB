@@ -1,5 +1,5 @@
 /* cond.c - conditional assembly pseudo-ops, and .include
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -250,7 +250,7 @@ get_mri_string (int terminator, int *len)
 	     && ! is_end_of_line[(unsigned char) *input_line_pointer])
 	++input_line_pointer;
       s = input_line_pointer;
-      while (s > ret && (s[-1] == ' ' || s[-1] == '\t'))
+      while (s > ret && is_whitespace (s[-1]))
 	--s;
     }
 

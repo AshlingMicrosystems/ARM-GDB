@@ -26,6 +26,8 @@ All available -march extensions for RISC-V:
 	zihintpause                             2.0
 	zihpm                                   2.0
 	zimop                                   1.0
+	zicfiss                                 1.0
+	zicfilp                                 1.0
 	zmmul                                   1.0
 	za64rs                                  1.0
 	za128rs                                 1.0
@@ -104,6 +106,7 @@ All available -march extensions for RISC-V:
 	zcd                                     1.0
 	zcmop                                   1.0
 	zcmp                                    1.0
+	zcmt                                    1.0
 	shcounterenw                            1.0
 	shgatpa                                 1.0
 	shtvala                                 1.0
@@ -113,19 +116,23 @@ All available -march extensions for RISC-V:
 	smaia                                   1.0
 	smcsrind                                1.0
 	smcntrpmf                               1.0
+	smctr                                   1.0
 	smepmp                                  1.0
 	smrnmi                                  1.0
 	smstateen                               1.0
+	smdbltrp                                1.0
 	ssaia                                   1.0
 	ssccptr                                 1.0
 	sscsrind                                1.0
 	sscofpmf                                1.0
 	sscounterenw                            1.0
+	ssctr                                   1.0
 	ssstateen                               1.0
 	sstc                                    1.0
 	sstvala                                 1.0
 	sstvecd                                 1.0
 	ssu64xl                                 1.0
+	ssdbltrp                                1.0
 	svade                                   1.0
 	svadu                                   1.0
 	svbare                                  1.0
@@ -156,3 +163,6 @@ All available -march extensions for RISC-V:
 	xventanacondops                         1.0
 	xsfvcp                                  1.0
 	xsfcease                                1.0
+	xsfvqmaccqoq                            1.0
+	xsfvqmaccdod                            1.0
+	xsfvfnrclipxfqf                         1.0

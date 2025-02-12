@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef CLI_CLI_STYLE_H
-#define CLI_CLI_STYLE_H
+#ifndef GDB_CLI_CLI_STYLE_H
+#define GDB_CLI_CLI_STYLE_H
 
 #include "ui-file.h"
 #include "command.h"
@@ -67,9 +67,9 @@ private:
   const char *m_name;
 
   /* The foreground.  */
-  const char *m_foreground;
+  ui_file_style::color m_foreground;
   /* The background.  */
-  const char *m_background;
+  ui_file_style::color m_background;
   /* The intensity.  */
   const char *m_intensity;
 
@@ -118,6 +118,9 @@ extern cli_style_option highlight_style;
 /* The title style.  */
 extern cli_style_option title_style;
 
+/* Style used for commands.  */
+extern cli_style_option command_style;
+
 /* The metadata style.  */
 extern cli_style_option metadata_style;
 
@@ -157,4 +160,4 @@ extern bool disassembler_styling;
 /* True if styling is enabled.  */
 extern bool cli_styling;
 
-#endif /* CLI_CLI_STYLE_H */
+#endif /* GDB_CLI_CLI_STYLE_H */

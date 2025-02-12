@@ -284,9 +284,7 @@ static /*const*/ int i386_regmap[] =
 static int
 is_64bit_tdesc (thread_info *thread)
 {
-  struct regcache *regcache = get_thread_regcache (thread, 0);
-
-  return register_size (regcache->tdesc, 0) == 8;
+  return register_size (thread->process ()->tdesc, 0) == 8;
 }
 
 #endif
@@ -301,7 +299,7 @@ ps_get_thread_area (struct ps_prochandle *ph,
 #ifdef __x86_64__
   lwp_info *lwp = find_lwp_pid (ptid_t (lwpid));
   gdb_assert (lwp != nullptr);
-  int use_64bit = is_64bit_tdesc (get_lwp_thread (lwp));
+  int use_64bit = is_64bit_tdesc (lwp->thread);
 
   if (use_64bit)
     {
@@ -346,7 +344,7 @@ x86_target::low_get_thread_area (int lwpid, CORE_ADDR *addr)
   lwp_info *lwp = find_lwp_pid (ptid_t (lwpid));
   gdb_assert (lwp != nullptr);
 #ifdef __x86_64__
-  int use_64bit = is_64bit_tdesc (get_lwp_thread (lwp));
+  int use_64bit = is_64bit_tdesc (lwp->thread);
 
   if (use_64bit)
     {
@@ -362,8 +360,8 @@ x86_target::low_get_thread_area (int lwpid, CORE_ADDR *addr)
 #endif
 
   {
-    struct thread_info *thr = get_lwp_thread (lwp);
-    struct regcache *regcache = get_thread_regcache (thr, 1);
+    thread_info *thr = lwp->thread;
+    regcache *regcache = get_thread_regcache (thr);
     unsigned int desc[4];
     ULONGEST gs = 0;
     const int reg_thread_area = 3; /* bits to scale down register value.  */
@@ -2876,8 +2874,7 @@ x86_target::low_supports_range_stepping ()
 int
 x86_target::get_ipa_tdesc_idx ()
 {
-  struct regcache *regcache = get_thread_regcache (current_thread, 0);
-  const struct target_desc *tdesc = regcache->tdesc;
+  const target_desc *tdesc = current_process ()->tdesc;
 
   if (!use_xml)
     {

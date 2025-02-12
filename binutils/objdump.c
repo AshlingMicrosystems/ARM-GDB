@@ -1,5 +1,5 @@
 /* objdump.c -- dump information about an object file.
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    This file is part of GNU Binutils.
 
@@ -117,7 +117,8 @@ static bool disassemble_all;		/* -D */
 static int disassemble_zeroes;		/* --disassemble-zeroes */
 static bool formats_info;		/* -i */
 int wide_output;			/* -w */
-static int insn_width;			/* --insn-width */
+#define MAX_INSN_WIDTH 49
+static unsigned long insn_width;	/* --insn-width */
 static bfd_vma start_address = (bfd_vma) -1; /* --start-address */
 static bfd_vma stop_address = (bfd_vma) -1;  /* --stop-address */
 static int dump_debugging;		/* --debugging */
@@ -3391,7 +3392,7 @@ disassemble_bytes (struct disassemble_info *inf,
 	}
       else
 	{
-	  char buf[50];
+	  char buf[MAX_INSN_WIDTH + 1];
 	  unsigned int bpc = 0;
 	  unsigned int pb = 0;
 
@@ -5730,6 +5731,7 @@ dump_bfd (bfd *abfd, bool is_mainfile)
 		{
 		  if (old_symcount == 0)
 		    {
+		      free (syms);
 		      syms = extra_syms;
 		    }
 		  else
@@ -5739,6 +5741,7 @@ dump_bfd (bfd *abfd, bool is_mainfile)
 		      memcpy (syms + old_symcount,
 			      extra_syms,
 			      (symcount + 1) * sizeof (asymbol *));
+		      free (extra_syms);
 		    }
 		}
 
@@ -5888,9 +5891,6 @@ display_any_bfd (bfd *file, int level)
   /* If the file is an archive, process all of its elements.  */
   if (bfd_check_format (file, bfd_archive))
     {
-      bfd *arfile = NULL;
-      bfd *last_arfile = NULL;
-
       if (level == 0)
 	printf (_("In archive %s:\n"), sanitize_string (bfd_get_filename (file)));
       else if (level > 100)
@@ -5905,30 +5905,25 @@ display_any_bfd (bfd *file, int level)
 	printf (_("In nested archive %s:\n"),
 		sanitize_string (bfd_get_filename (file)));
 
+      bfd *last_arfile = NULL;
       for (;;)
 	{
-	  bfd_set_error (bfd_error_no_error);
-
-	  arfile = bfd_openr_next_archived_file (file, arfile);
-	  if (arfile == NULL)
+	  bfd *arfile = bfd_openr_next_archived_file (file, last_arfile);
+	  if (arfile == NULL
+	      || arfile == last_arfile)
 	    {
+	      if (arfile != NULL)
+		bfd_set_error (bfd_error_malformed_archive);
 	      if (bfd_get_error () != bfd_error_no_more_archived_files)
 		my_bfd_nonfatal (bfd_get_filename (file));
 	      break;
 	    }
 
+	  if (last_arfile != NULL)
+	    bfd_close (last_arfile);
+
 	  display_any_bfd (arfile, level + 1);
 
-	  if (last_arfile != NULL)
-	    {
-	      bfd_close (last_arfile);
-	      /* PR 17512: file: ac585d01.  */
-	      if (arfile == last_arfile)
-		{
-		  last_arfile = NULL;
-		  break;
-		}
-	    }
 	  last_arfile = arfile;
 	}
 
@@ -5940,7 +5935,7 @@ display_any_bfd (bfd *file, int level)
 }
 
 static void
-display_file (char *filename, char *target, bool last_file)
+display_file (char *filename, char *target)
 {
   bfd *file;
 
@@ -5959,18 +5954,7 @@ display_file (char *filename, char *target, bool last_file)
 
   display_any_bfd (file, 0);
 
-  /* This is an optimization to improve the speed of objdump, especially when
-     dumping a file with lots of associated debug informatiom.  Calling
-     bfd_close on such a file can take a non-trivial amount of time as there
-     are lots of lists to walk and buffers to free.  This is only really
-     necessary however if we are about to load another file and we need the
-     memory back.  Otherwise, if we are about to exit, then we can save (a lot
-     of) time by only doing a quick close, and allowing the OS to reclaim the
-     memory for us.  */
-  if (! last_file)
-    bfd_close (file);
-  else
-    bfd_close_all_done (file);
+  bfd_close (file);
 }
 
 int
@@ -6017,12 +6001,14 @@ main (int argc, char **argv)
 	  {
 	    char *options;
 	    if (disassembler_options)
-	      /* Ignore potential memory leak for now.  */
 	      options = concat (disassembler_options, ",",
 				optarg, (const char *) NULL);
 	    else
-	      options = optarg;
+	      options = xstrdup (optarg);
+	    free (disassembler_options);
 	    disassembler_options = remove_whitespace_and_extra_commas (options);
+	    if (!disassembler_options)
+	      free (options);
 	  }
 	  break;
 	case 'j':
@@ -6087,8 +6073,9 @@ main (int argc, char **argv)
 	  break;
 	case OPTION_INSN_WIDTH:
 	  insn_width = strtoul (optarg, NULL, 0);
-	  if (insn_width <= 0)
-	    fatal (_("error: instruction width must be positive"));
+	  if (insn_width - 1 >= MAX_INSN_WIDTH)
+	    fatal (_("error: instruction width must be in the range 1 to "
+		     XSTRING (MAX_INSN_WIDTH)));
 	  break;
 	case OPTION_INLINES:
 	  unwind_inlines = true;
@@ -6370,11 +6357,11 @@ main (int argc, char **argv)
   else
     {
       if (optind == argc)
-	display_file ("a.out", target, true);
+	display_file ("a.out", target);
       else
 	for (; optind < argc;)
 	  {
-	    display_file (argv[optind], target, optind == argc - 1);
+	    display_file (argv[optind], target);
 	    optind++;
 	  }
     }

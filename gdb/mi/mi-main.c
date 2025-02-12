@@ -30,11 +30,9 @@
 #include "mi-cmds.h"
 #include "mi-parse.h"
 #include "mi-getopt.h"
-#include "mi-console.h"
 #include "ui-out.h"
 #include "mi-out.h"
 #include "interps.h"
-#include "gdbsupport/event-loop.h"
 #include "event-top.h"
 #include "gdbcore.h"
 #include "value.h"
@@ -45,7 +43,6 @@
 #include "language.h"
 #include "valprint.h"
 #include "osdata.h"
-#include "gdbsupport/gdb_splay_tree.h"
 #include "tracepoint.h"
 #include "ada-lang.h"
 #include "linespec.h"
@@ -60,7 +57,6 @@
 #include <chrono>
 #include "progspace-and-thread.h"
 #include "gdbsupport/rsp-low.h"
-#include <algorithm>
 #include <set>
 #include <map>
 
@@ -2077,7 +2073,7 @@ mi_cmd_execute (struct mi_parse *parse)
 	error (_("Invalid thread group for the --thread-group option"));
 
       set_current_inferior (inf);
-      /* This behaviour means that if --thread-group option identifies
+      /* This behavior means that if --thread-group option identifies
 	 an inferior with multiple threads, then a random one will be
 	 picked.  This is not a problem -- frontend should always
 	 provide --thread if it wishes to operate on a specific

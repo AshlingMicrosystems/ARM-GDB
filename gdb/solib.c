@@ -593,7 +593,7 @@ solib::clear ()
   this->abfd = nullptr;
 
   /* Our caller closed the objfile, possibly via objfile_purge_solibs.  */
-  this->symbols_loaded = 0;
+  this->symbols_loaded = false;
   this->objfile = nullptr;
 
   this->addr_low = this->addr_high = 0;
@@ -653,7 +653,7 @@ solib_read_symbols (solib &so, symfile_add_flags flags)
 	      so.objfile->addr_low = so.addr_low;
 	    }
 
-	  so.symbols_loaded = 1;
+	  so.symbols_loaded = true;
 	}
       catch (const gdb_exception_error &e)
 	{
@@ -691,13 +691,17 @@ notify_solib_loaded (solib &so)
   gdb::observers::solib_loaded.notify (so);
 }
 
-/* Notify interpreters and observers that solib SO has been unloaded.  */
+/* Notify interpreters and observers that solib SO has been unloaded.
+   When STILL_IN_USE is true, the objfile backing SO is still in use,
+   this indicates that SO was loaded multiple times, but only mapped
+   in once (the mapping was reused).  */
 
 static void
-notify_solib_unloaded (program_space *pspace, const solib &so)
+notify_solib_unloaded (program_space *pspace, const solib &so,
+		       bool still_in_use)
 {
-  interps_notify_solib_unloaded (so);
-  gdb::observers::solib_unloaded.notify (pspace, so);
+  interps_notify_solib_unloaded (so, still_in_use);
+  gdb::observers::solib_unloaded.notify (pspace, so, still_in_use);
 }
 
 /* See solib.h.  */
@@ -792,17 +796,22 @@ update_solib_list (int from_tty)
       /* If it's not on the inferior's list, remove it from GDB's tables.  */
       else
 	{
+	  bool still_in_use
+	    = (gdb_iter->objfile != nullptr
+	       && solib_used (current_program_space, *gdb_iter));
+
 	  /* Notify any observer that the shared object has been
 	     unloaded before we remove it from GDB's tables.  */
-	  notify_solib_unloaded (current_program_space, *gdb_iter);
-
-	  current_program_space->deleted_solibs.push_back (gdb_iter->so_name);
+	  notify_solib_unloaded (current_program_space, *gdb_iter,
+				 still_in_use);
 
 	  /* Unless the user loaded it explicitly, free SO's objfile.  */
 	  if (gdb_iter->objfile != nullptr
 	      && !(gdb_iter->objfile->flags & OBJF_USERLOADED)
-	      && !solib_used (current_program_space, *gdb_iter))
+	      && !still_in_use)
 	    gdb_iter->objfile->unlink ();
+
+	  current_program_space->deleted_solibs.push_back (gdb_iter->so_name);
 
 	  /* Some targets' section tables might be referring to
 	     sections from so.abfd; remove them.  */
@@ -860,18 +869,27 @@ update_solib_list (int from_tty)
 
       if (not_found == 1)
 	warning (_ ("Could not load shared library symbols for %ps.\n"
-		    "Do you need \"set solib-search-path\" "
-		    "or \"set sysroot\"?"),
+		    "Do you need \"%ps\" or \"%ps\"?"),
 		 styled_string (file_name_style.style (),
-				not_found_filename));
+				not_found_filename),
+		 styled_string (command_style.style (),
+				"set solib-search-path"),
+		 styled_string (command_style.style (), "set sysroot"));
       else if (not_found > 1)
 	warning (_ ("\
 Could not load shared library symbols for %d libraries, e.g. %ps.\n\
-Use the \"info sharedlibrary\" command to see the complete listing.\n\
-Do you need \"set solib-search-path\" or \"set sysroot\"?"),
+Use the \"%ps\" command to see the complete listing.\n\
+Do you need \"%ps\" or \"%ps\"?"),
 		 not_found,
 		 styled_string (file_name_style.style (),
-				not_found_filename));
+				not_found_filename),
+		 styled_string (command_style.style (),
+				"info sharedlibrary"),
+		 styled_string (command_style.style (),
+				"set solib-search-path"),
+		 styled_string (command_style.style (),
+				"set sysroot"));
+
     }
 }
 
@@ -1149,7 +1167,10 @@ clear_solib (program_space *pspace)
 
   for (solib &so : pspace->so_list)
     {
-      notify_solib_unloaded (pspace, so);
+      bool still_in_use
+	= (so.objfile != nullptr && solib_used (pspace, so));
+
+      notify_solib_unloaded (pspace, so, still_in_use);
       pspace->remove_target_sections (&so);
     };
 
@@ -1259,7 +1280,7 @@ reload_shared_libraries_1 (int from_tty)
   for (solib &so : current_program_space->solibs ())
     {
       const char *found_pathname = NULL;
-      bool was_loaded = so.symbols_loaded != 0;
+      bool was_loaded = so.symbols_loaded;
       symfile_add_flags add_flags = SYMFILE_DEFER_BP_RESET;
 
       if (from_tty)

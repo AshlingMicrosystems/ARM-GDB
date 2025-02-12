@@ -1,5 +1,5 @@
 /* Compressed section support (intended for debug sections).
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -694,6 +694,7 @@ bfd_compress_section_contents (bfd *abfd, sec_ptr sec)
       sec->size = compressed_size;
       sec->compress_status = COMPRESS_SECTION_DONE;
     }
+  sec->alloced = 1;
   sec->contents = buffer;
   sec->flags |= SEC_IN_MEMORY;
   free (input_buffer);

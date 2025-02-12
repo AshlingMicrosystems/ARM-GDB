@@ -81,12 +81,10 @@ debug_event_ptid (DEBUG_EVENT *event)
 static void
 win32_get_thread_context (windows_thread_info *th)
 {
-#ifdef __x86_64__
-  if (windows_process.wow64_process)
-    memset (&th->wow64_context, 0, sizeof (WOW64_CONTEXT));
-  else
-#endif
-    memset (&th->context, 0, sizeof (CONTEXT));
+  windows_process.with_context (th, [] (auto *context)
+    {
+      memset (context, 0, sizeof (*context));
+    });
   (*the_low_target.get_thread_context) (th);
 }
 
@@ -95,12 +93,10 @@ win32_get_thread_context (windows_thread_info *th)
 static void
 win32_set_thread_context (windows_thread_info *th)
 {
-#ifdef __x86_64__
-  if (windows_process.wow64_process)
-    Wow64SetThreadContext (th->h, &th->wow64_context);
-  else
-#endif
-    SetThreadContext (th->h, &th->context);
+  windows_process.with_context (th, [&] (auto *context)
+    {
+      set_thread_context (th->h, context);
+    });
 }
 
 /* Set the thread context of the thread associated with TH.  */
@@ -117,13 +113,7 @@ win32_prepare_to_resume (windows_thread_info *th)
 void
 win32_require_context (windows_thread_info *th)
 {
-  DWORD context_flags;
-#ifdef __x86_64__
-  if (windows_process.wow64_process)
-    context_flags = th->wow64_context.ContextFlags;
-  else
-#endif
-    context_flags = th->context.ContextFlags;
+  DWORD context_flags = *windows_process.context_flags_ptr (th);
   if (context_flags == 0)
     {
       th->suspend ();
@@ -141,7 +131,7 @@ gdbserver_windows_process::thread_rec
   if (thread == NULL)
     return NULL;
 
-  windows_thread_info *th = (windows_thread_info *) thread_target_data (thread);
+  auto th = static_cast<windows_thread_info *> (thread->target_data ());
   if (disposition != DONT_INVALIDATE_CONTEXT)
     win32_require_context (th);
   return th;
@@ -178,7 +168,7 @@ child_add_thread (DWORD pid, DWORD tid, HANDLE h, void *tlb)
 static void
 delete_thread_info (thread_info *thread)
 {
-  windows_thread_info *th = (windows_thread_info *) thread_target_data (thread);
+  auto th = static_cast<windows_thread_info *> (thread->target_data ());
 
   thread->process ()->remove_thread (thread);
   delete th;
@@ -188,12 +178,17 @@ delete_thread_info (thread_info *thread)
 static void
 child_delete_thread (DWORD pid, DWORD tid)
 {
-  /* If the last thread is exiting, just return.  */
-  if (all_threads.size () == 1)
+  process_info *process = find_process_pid (pid);
+
+  if (process == nullptr)
     return;
 
-  thread_info *thread = find_thread_ptid (ptid_t (pid, tid));
-  if (thread == NULL)
+  /* If the last thread is exiting, just return.  */
+  if (process->thread_count () == 1)
+    return;
+
+  thread_info *thread = process->find_thread (ptid_t (pid, tid));
+  if (thread == nullptr)
     return;
 
   delete_thread_info (thread);
@@ -394,7 +389,7 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
 static void
 continue_one_thread (thread_info *thread, int thread_id)
 {
-  windows_thread_info *th = (windows_thread_info *) thread_target_data (thread);
+  auto th = static_cast<windows_thread_info *> (thread->target_data ());
 
   if (thread_id == -1 || thread_id == th->tid)
     {
@@ -402,13 +397,7 @@ continue_one_thread (thread_info *thread, int thread_id)
 
       if (th->suspended)
 	{
-	  DWORD *context_flags;
-#ifdef __x86_64__
-	  if (windows_process.wow64_process)
-	    context_flags = &th->wow64_context.ContextFlags;
-	  else
-#endif
-	    context_flags = &th->context.ContextFlags;
+	  DWORD *context_flags = windows_process.context_flags_ptr (th);
 	  if (*context_flags)
 	    {
 	      win32_set_thread_context (th);
@@ -501,14 +490,11 @@ create_process (const char *program, char *args,
   return ret;
 }
 
-/* Start a new process.
-   PROGRAM is the program name.
-   PROGRAM_ARGS is the vector containing the inferior's args.
-   Returns the new PID on success, -1 on failure.  Registers the new
-   process with the process list.  */
+/* See target.h.  */
+
 int
 win32_process_target::create_inferior (const char *program,
-				       const std::vector<char *> &program_args)
+				       const std::string &program_args)
 {
   client_state &cs = get_client_state ();
 #ifndef USE_WIN32API
@@ -519,8 +505,7 @@ win32_process_target::create_inferior (const char *program,
   DWORD flags;
   PROCESS_INFORMATION pi;
   DWORD err;
-  std::string str_program_args = construct_inferior_arguments (program_args);
-  char *args = (char *) str_program_args.c_str ();
+  char *args = (char *) program_args.c_str ();
 
   /* win32_wait needs to know we're not attaching.  */
   windows_process.attaching = 0;
@@ -671,7 +656,7 @@ gdbserver_windows_process::handle_output_debug_string
 }
 
 static void
-win32_clear_inferiors (void)
+win32_clear_process ()
 {
   if (windows_process.open_process_used)
     {
@@ -681,7 +666,6 @@ win32_clear_inferiors (void)
 
   for_each_thread (delete_thread_info);
   windows_process.siginfo_er.ExceptionCode = 0;
-  clear_inferiors ();
 }
 
 /* Implementation of target_ops::kill.  */
@@ -704,9 +688,9 @@ win32_process_target::kill (process_info *process)
 	windows_process.handle_output_debug_string (nullptr);
     }
 
-  win32_clear_inferiors ();
-
+  win32_clear_process ();
   remove_process (process);
+
   return 0;
 }
 
@@ -725,7 +709,7 @@ win32_process_target::detach (process_info *process)
     return -1;
 
   DebugSetProcessKillOnExit (FALSE);
-  win32_clear_inferiors ();
+  win32_clear_process ();
   remove_process (process);
 
   return 0;
@@ -818,13 +802,7 @@ win32_process_target::resume (thread_resume *resume_info, size_t n)
     {
       win32_prepare_to_resume (th);
 
-      DWORD *context_flags;
-#ifdef __x86_64__
-      if (windows_process.wow64_process)
-	context_flags = &th->wow64_context.ContextFlags;
-      else
-#endif
-	context_flags = &th->context.ContextFlags;
+      DWORD *context_flags = windows_process.context_flags_ptr (th);
       if (*context_flags)
 	{
 	  /* Move register values from the inferior into the thread
@@ -923,7 +901,7 @@ gdbserver_windows_process::handle_unload_dll ()
 static void
 suspend_one_thread (thread_info *thread)
 {
-  windows_thread_info *th = (windows_thread_info *) thread_target_data (thread);
+  auto th = static_cast<windows_thread_info *> (thread->target_data ());
 
   th->suspend ();
 }
@@ -961,7 +939,7 @@ gdbserver_windows_process::handle_access_violation
 static void
 maybe_adjust_pc ()
 {
-  struct regcache *regcache = get_thread_regcache (current_thread, 1);
+  regcache *regcache = get_thread_regcache (current_thread);
   child_fetch_inferior_registers (regcache, -1);
 
   windows_thread_info *th
@@ -1214,7 +1192,7 @@ win32_process_target::wait (ptid_t ptid, target_waitstatus *ourstatus,
 	case TARGET_WAITKIND_EXITED:
 	  OUTMSG2 (("Child exited with retcode = %x\n",
 		    ourstatus->exit_status ()));
-	  win32_clear_inferiors ();
+	  win32_clear_process ();
 	  return ptid_t (windows_process.current_event.dwProcessId);
 	case TARGET_WAITKIND_STOPPED:
 	case TARGET_WAITKIND_SIGNALLED:

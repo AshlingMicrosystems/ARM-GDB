@@ -1,6 +1,6 @@
 /* tc-msp430.c -- Assembler code for the Texas Instruments MSP430
 
-  Copyright (C) 2002-2024 Free Software Foundation, Inc.
+  Copyright (C) 2002-2025 Free Software Foundation, Inc.
   Contributed by Dmitry Diky <diwil@mail.ru>
 
   This file is part of GAS, the GNU Assembler.
@@ -436,11 +436,11 @@ del_spaces (char * s)
 {
   while (*s)
     {
-      if (ISSPACE (*s))
+      if (is_whitespace (*s))
 	{
 	  char *m = s + 1;
 
-	  while (ISSPACE (*m) && *m)
+	  while (is_whitespace (*m) && *m)
 	    m++;
 	  memmove (s, m, strlen (m) + 1);
 	}
@@ -452,7 +452,7 @@ del_spaces (char * s)
 static inline char *
 skip_space (char * s)
 {
-  while (ISSPACE (*s))
+  while (is_whitespace (*s))
     ++s;
   return s;
 }
@@ -1813,7 +1813,7 @@ extract_cmd (char * from, char * to, int limit)
 {
   int size = 0;
 
-  while (*from && ! ISSPACE (*from) && *from != '.' && limit > size)
+  while (*from && ! is_whitespace (*from) && *from != '.' && limit > size)
     {
       *(to + size) = *from;
       from++;
@@ -2833,14 +2833,12 @@ msp430_operands (struct msp430_opcode_s * opcode, char * line)
 	  check = true;
 	  break;
 
-	case 0:
-	case ' ':
-	case '\n':
-	case '\r':
-	  as_warn (_("no size modifier after period, .w assumed"));
-	  break;
-
 	default:
+	  if (is_whitespace (*line) || is_end_of_stmt(*line))
+	    {
+	      as_warn (_("no size modifier after period, .w assumed"));
+	      break;
+	    }
 	  as_bad (_("unrecognised instruction size modifier .%c"),
 		   * line);
 	  return 0;
@@ -2853,7 +2851,7 @@ msp430_operands (struct msp430_opcode_s * opcode, char * line)
 	}
     }
 
-  if (*line && ! ISSPACE (*line))
+  if (*line && ! is_whitespace (*line))
     {
       as_bad (_("junk found after instruction: %s.%s"),
 	      opcode->name, line);
@@ -4541,7 +4539,7 @@ md_apply_fix (fixS * fixp, valueT * valuep, segT seg)
 	  break;
 
 	case BFD_RELOC_32:
-	  bfd_putl16 ((bfd_vma) value, where);
+	  bfd_putl32 ((bfd_vma) value, where);
 	  break;
 
 	case BFD_RELOC_MSP430_ABS8:
@@ -4629,23 +4627,22 @@ S_IS_GAS_LOCAL (symbolS * s)
    then it is done here.  */
 
 arelent **
-tc_gen_reloc (asection * seg ATTRIBUTE_UNUSED, fixS * fixp)
+tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 {
-  static arelent * no_relocs = NULL;
-  static arelent * relocs[MAX_RELOC_EXPANSION + 1];
+  static arelent *no_relocs = NULL;
+  static arelent *relocs[MAX_RELOC_EXPANSION + 1];
   arelent *reloc;
 
-  reloc = XNEW (arelent);
+  reloc = notes_alloc (sizeof (arelent));
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
   reloc->howto = bfd_reloc_type_lookup (stdoutput, fixp->fx_r_type);
 
-  if (reloc->howto == (reloc_howto_type *) NULL)
+  if (reloc->howto == NULL)
     {
       as_bad_where (fixp->fx_file, fixp->fx_line,
 		    _("reloc %d not supported by object file format"),
 		    (int) fixp->fx_r_type);
-      free (reloc);
-      return & no_relocs;
+      return &no_relocs;
     }
 
   relocs[0] = reloc;
@@ -4686,7 +4683,7 @@ tc_gen_reloc (asection * seg ATTRIBUTE_UNUSED, fixS * fixp)
 	  && ! S_IS_GAS_LOCAL (fixp->fx_addsy)
 	  && ! S_IS_GAS_LOCAL (fixp->fx_subsy))
 	{
-	  arelent * reloc2 = XNEW (arelent);
+	  arelent *reloc2 = notes_alloc (sizeof (arelent));
 
 	  relocs[0] = reloc2;
 	  relocs[1] = reloc;
@@ -4697,10 +4694,10 @@ tc_gen_reloc (asection * seg ATTRIBUTE_UNUSED, fixS * fixp)
 	  reloc2->addend = - S_GET_VALUE (fixp->fx_subsy);
 
 	  if (ssec == absolute_section)
-	    reloc2->sym_ptr_ptr = bfd_abs_section_ptr->symbol_ptr_ptr;
+	    reloc2->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;
 	  else
 	    {
-	      reloc2->sym_ptr_ptr = XNEW (asymbol *);
+	      reloc2->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
 	      *reloc2->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_subsy);
 	    }
 
@@ -4708,11 +4705,11 @@ tc_gen_reloc (asection * seg ATTRIBUTE_UNUSED, fixS * fixp)
 	  if (asec == absolute_section)
 	    {
 	      reloc->addend += S_GET_VALUE (fixp->fx_addsy);
-	      reloc->sym_ptr_ptr = bfd_abs_section_ptr->symbol_ptr_ptr;
+	      reloc->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;
 	    }
 	  else
 	    {
-	      reloc->sym_ptr_ptr = XNEW (asymbol *);
+	      reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
 	      *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
 	    }
 
@@ -4746,13 +4743,11 @@ tc_gen_reloc (asection * seg ATTRIBUTE_UNUSED, fixS * fixp)
 	      break;
 
 	    default:
-	      reloc->sym_ptr_ptr
-		= (asymbol **) bfd_abs_section_ptr->symbol_ptr_ptr;
+	      reloc->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;
 	      return relocs;
 	    }
 
-	  free (reloc);
-	  return & no_relocs;
+	  return &no_relocs;
 	}
     }
   else
@@ -4765,11 +4760,10 @@ tc_gen_reloc (asection * seg ATTRIBUTE_UNUSED, fixS * fixp)
 	  char *fixpos = fixp->fx_where + fixp->fx_frag->fr_literal;
 
 	  md_number_to_chars (fixpos, amount, 2);
-	  free (reloc);
-	  return & no_relocs;
+	  return &no_relocs;
 	}
 #endif
-      reloc->sym_ptr_ptr = XNEW (asymbol *);
+      reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
       *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
       reloc->addend = fixp->fx_offset;
 

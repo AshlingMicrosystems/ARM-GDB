@@ -1,5 +1,5 @@
 /* Routines to help build PEI-format DLLs (Win32 etc)
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
    Written by DJ Delorie <dj@cygnus.com>
 
    This file is part of the GNU Binutils.
@@ -382,6 +382,8 @@ static const autofilter_entry_type autofilter_liblist[] =
   { STRING_COMMA_LEN ("libmsvcrt-os") },
   { STRING_COMMA_LEN ("libucrt") },
   { STRING_COMMA_LEN ("libucrtbase") },
+  { STRING_COMMA_LEN ("libpthread") },
+  { STRING_COMMA_LEN ("libwinpthread") },
   { NULL, 0 }
 };
 
@@ -777,7 +779,7 @@ process_def_file_and_drectve (bfd *abfd ATTRIBUTE_UNUSED, struct bfd_link_info *
 
 	  if (!bfd_generic_link_read_symbols (b))
 	    {
-	      einfo (_("%F%P: %pB: could not read symbols: %E\n"), b);
+	      fatal (_("%P: %pB: could not read symbols: %E\n"), b);
 	      return;
 	    }
 
@@ -1069,7 +1071,7 @@ build_filler_bfd (bool include_edata)
 			     bfd_get_arch (link_info.output_bfd),
 			     bfd_get_mach (link_info.output_bfd)))
     {
-      einfo (_("%F%P: can not create BFD: %E\n"));
+      fatal (_("%P: can not create BFD: %E\n"));
       return;
     }
 
@@ -1347,7 +1349,7 @@ pe_walk_relocs (struct bfd_link_info *info,
 
       if (!bfd_generic_link_read_symbols (b))
 	{
-	  einfo (_("%F%P: %pB: could not read symbols: %E\n"), b);
+	  fatal (_("%P: %pB: could not read symbols: %E\n"), b);
 	  return;
 	}
 
@@ -1428,7 +1430,7 @@ pe_find_data_imports (const char *symhead,
       if (!bfd_hash_table_init (import_hash,
 				bfd_hash_newfunc,
 				sizeof (struct bfd_hash_entry)))
-	einfo (_("%F%P: bfd_hash_table_init failed: %E\n"));
+	fatal (_("%P: bfd_hash_table_init failed: %E\n"));
     }
   else
     import_hash = NULL;
@@ -1468,7 +1470,7 @@ pe_find_data_imports (const char *symhead,
 
 		if (!bfd_generic_link_read_symbols (b))
 		  {
-		    einfo (_("%F%P: %pB: could not read symbols: %E\n"), b);
+		    fatal (_("%P: %pB: could not read symbols: %E\n"), b);
 		    return;
 		  }
 
@@ -1570,7 +1572,7 @@ generate_reloc (bfd *abfd, struct bfd_link_info *info)
 
       if (!bfd_generic_link_read_symbols (b))
 	{
-	  einfo (_("%F%P: %pB: could not read symbols: %E\n"), b);
+	  fatal (_("%P: %pB: could not read symbols: %E\n"), b);
 	  return;
 	}
 
@@ -3058,13 +3060,6 @@ pe_dll_generate_implib (def_file *def, const char *impfilename, struct bfd_link_
 
   if (! bfd_close (outarch))
     einfo ("%X%P: bfd_close %s: %E\n", impfilename);
-
-  while (head != NULL)
-    {
-      bfd *n = head->archive_next;
-      bfd_close (head);
-      head = n;
-    }
 }
 
 static int undef_count = 0;

@@ -527,6 +527,12 @@ print_partial_symbols (struct gdbarch *gdbarch, struct objfile *objfile,
 	case COMMON_BLOCK_DOMAIN:
 	  gdb_puts ("common block domain, ", outfile);
 	  break;
+	case TYPE_DOMAIN:
+	  gdb_puts ("type domain, ", outfile);
+	  break;
+	case FUNCTION_DOMAIN:
+	  gdb_puts ("function domain, ", outfile);
+	  break;
 	default:
 	  gdb_puts ("<invalid domain>, ", outfile);
 	  break;
@@ -1572,8 +1578,8 @@ This does not include information about individual partial symbols,\n\
 just the symbol table structures themselves."),
 	   &maintenanceinfolist);
 
-  add_cmd ("check-psymtabs", class_maintenance, maintenance_check_psymtabs,
+  add_cmd ("psymtabs", class_maintenance, maintenance_check_psymtabs,
 	   _("\
 Check consistency of currently expanded psymtabs versus symtabs."),
-	   &maintenancelist);
+	   &maintenancechecklist);
 }

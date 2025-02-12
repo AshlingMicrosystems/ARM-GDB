@@ -17,19 +17,19 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#if !defined (VALUE_H)
-#define VALUE_H 1
+#ifndef GDB_VALUE_H
+#define GDB_VALUE_H
 
 #include "frame.h"
 #include "extension.h"
 #include "gdbsupport/gdb_ref_ptr.h"
 #include "gmp-utils.h"
+#include "gdbtypes.h"
 
 struct block;
 struct expression;
 struct regcache;
 struct symbol;
-struct type;
 struct ui_file;
 struct language_defn;
 struct value_print_options;
@@ -593,7 +593,7 @@ public:
 
   /* Update this value before discarding OBJFILE.  COPIED_TYPES is
      used to prevent cycles / duplicates.  */
-  void preserve (struct objfile *objfile, htab_t copied_types);
+  void preserve (struct objfile *objfile, copied_types_hash_t &copied_types);
 
   /* Unpack a bitfield of BITSIZE bits found at BITPOS in the object
      at VALADDR + EMBEDDEDOFFSET that has the type of DEST_VAL and
@@ -1127,6 +1127,8 @@ extern struct value *value_from_contents (struct type *, const gdb_byte *);
 extern value *default_value_from_register (gdbarch *gdbarch, type *type,
 					   int regnum,
 					   const frame_info_ptr &this_frame);
+
+extern ULONGEST default_dwarf2_reg_piece_offset (gdbarch *gdbarch, int regnum, ULONGEST size);
 
 extern struct value *value_from_register (struct type *type, int regnum,
 					  const frame_info_ptr &frame);
@@ -1723,4 +1725,4 @@ void pseudo_to_concat_raw (const frame_info_ptr &next_frame,
 			   int raw_reg_1_num, int raw_reg_2_num,
 			   int raw_reg_3_num);
 
-#endif /* !defined (VALUE_H) */
+#endif /* GDB_VALUE_H */

@@ -1,4 +1,4 @@
-/* Copyright (C) 2021-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Oracle.
 
    This file is part of GNU Binutils.
@@ -1578,7 +1578,7 @@ __collector_resume_experiment ()
 }
 
 /* Code to support Samples and Pause/Resume */
-void collector_sample () __attribute__ ((weak, alias ("__collector_sample")));
+void collector_sample (char *name) __attribute__ ((weak, alias ("__collector_sample")));
 void
 __collector_sample (char *name)
 {

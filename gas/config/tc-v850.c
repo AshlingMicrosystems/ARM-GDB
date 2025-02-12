@@ -1,5 +1,5 @@
 /* tc-v850.c -- Assembler code for the NEC V850
-   Copyright (C) 1996-2024 Free Software Foundation, Inc.
+   Copyright (C) 1996-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -1338,8 +1338,7 @@ vector_register_name (expressionS *expressionP)
 static void
 skip_white_space (void)
 {
-  while (*input_line_pointer == ' '
-	 || *input_line_pointer == '\t')
+  while (is_whitespace (*input_line_pointer))
     ++input_line_pointer;
 }
 
@@ -2306,7 +2305,7 @@ md_assemble (char *str)
   most_match_errmsg[0] = 0;
 
   /* Get the opcode.  */
-  for (s = str; *s != '\0' && ! ISSPACE (*s); s++)
+  for (s = str; ! is_end_of_stmt (*s) && ! is_whitespace (*s); s++)
     continue;
 
   if (*s != '\0')
@@ -2323,7 +2322,7 @@ md_assemble (char *str)
     }
 
   str = s;
-  while (ISSPACE (*str))
+  while (is_whitespace (*str))
     ++str;
 
   start_of_operands = str;
@@ -2384,7 +2383,7 @@ md_assemble (char *str)
 
 	  errmsg = NULL;
 
-	  while (*str == ' ')
+	  while (is_whitespace (*str))
 	    ++str;
 
 	  if (operand->flags & V850_OPERAND_BANG
@@ -2397,7 +2396,7 @@ md_assemble (char *str)
 	  if (*str == ',' || *str == '[' || *str == ']')
 	    ++str;
 
-	  while (*str == ' ')
+	  while (is_whitespace (*str))
 	    ++str;
 
 	  if (   (strcmp (opcode->name, "pushsp") == 0
@@ -2792,7 +2791,7 @@ md_assemble (char *str)
 		  str = input_line_pointer;
 		  input_line_pointer = hold;
 
-		  while (*str == ' ' || *str == ','
+		  while (is_whitespace (*str) || *str == ','
 			 || *str == '[' || *str == ']')
 		    ++str;
 		  continue;
@@ -2996,12 +2995,12 @@ md_assemble (char *str)
 	  str = input_line_pointer;
 	  input_line_pointer = hold;
 
-	  while (*str == ' ' || *str == ',' || *str == '[' || *str == ']'
+	  while (is_whitespace (*str) || *str == ',' || *str == '[' || *str == ']'
 		 || *str == ')')
 	    ++str;
 	}
 
-      while (ISSPACE (*str))
+      while (is_whitespace (*str))
 	++str;
 
       if (*str == '\0')
@@ -3329,10 +3328,10 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 {
   arelent *reloc;
 
-  reloc		      = XNEW (arelent);
-  reloc->sym_ptr_ptr  = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
-  reloc->address      = fixp->fx_frag->fr_address + fixp->fx_where;
+  reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
 
   if (   fixp->fx_r_type == BFD_RELOC_VTABLE_ENTRY
       || fixp->fx_r_type == BFD_RELOC_VTABLE_INHERIT
@@ -3359,9 +3358,6 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 		    /* xgettext:c-format  */
 		    _("reloc %d not supported by object file format"),
 		    (int) fixp->fx_r_type);
-
-      xfree (reloc);
-
       return NULL;
     }
 

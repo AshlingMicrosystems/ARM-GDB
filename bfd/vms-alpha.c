@@ -1,5 +1,5 @@
 /* vms.c -- BFD back-end for EVAX (openVMS/Alpha) files.
-   Copyright (C) 1996-2024 Free Software Foundation, Inc.
+   Copyright (C) 1996-2025 Free Software Foundation, Inc.
 
    Initial version written by Klaus Kaempf (kkaempf@rmi.de)
    Major rewrite by Adacore.
@@ -2790,7 +2790,6 @@ alpha_vms_free_private (bfd *abfd)
 static bfd_cleanup
 alpha_vms_object_p (bfd *abfd)
 {
-  void *tdata_save = abfd->tdata.any;
   unsigned int test_len;
   unsigned char *buf;
 
@@ -2798,10 +2797,7 @@ alpha_vms_object_p (bfd *abfd)
 
   /* Allocate alpha-vms specific data.  */
   if (!vms_initialize (abfd))
-    {
-      abfd->tdata.any = tdata_save;
-      return NULL;
-    }
+    return NULL;
 
   if (bfd_seek (abfd, 0, SEEK_SET))
     goto error_ret;
@@ -2913,9 +2909,7 @@ alpha_vms_object_p (bfd *abfd)
 
  error_ret:
   alpha_vms_free_private (abfd);
-  if (abfd->tdata.any != tdata_save && abfd->tdata.any != NULL)
-    bfd_release (abfd, abfd->tdata.any);
-  abfd->tdata.any = tdata_save;
+  bfd_release (abfd, abfd->tdata.any);
   return NULL;
 }
 
@@ -5592,8 +5586,7 @@ alpha_vms_slurp_relocs (bfd *abfd)
 	      {
 		if (PRIV (sections) == NULL || cur_psidx >= (int) PRIV (section_count))
 		  goto fail;
-		reloc->sym_ptr_ptr =
-		  PRIV (sections)[cur_psidx]->symbol_ptr_ptr;
+		reloc->sym_ptr_ptr = &PRIV (sections)[cur_psidx]->symbol;
 	      }
 	    else
 	      reloc->sym_ptr_ptr = NULL;
@@ -9287,6 +9280,7 @@ alpha_vms_build_fixups (struct bfd_link_info *info)
 
   sec = alpha_vms_link_hash (info)->fixup;
   sec->contents = content;
+  sec->alloced = 1;
   sec->size = sz;
 
   eiaf = (struct vms_eiaf *)content;
@@ -9692,6 +9686,7 @@ alpha_vms_bfd_final_link (bfd *abfd, struct bfd_link_info *info)
 	  o->contents = bfd_alloc (abfd, o->size);
 	  if (o->contents == NULL)
 	    return false;
+	  o->alloced = 1;
 	}
       if (o->flags & SEC_LOAD)
 	{
@@ -9840,6 +9835,7 @@ alpha_vms_bfd_final_link (bfd *abfd, struct bfd_link_info *info)
 	      if (contents == NULL)
 		return false;
 	      dmt->contents = contents;
+	      dmt->alloced = 1;
 	      dmt->size = off;
 	    }
 	  else
@@ -9898,6 +9894,7 @@ alpha_vms_get_section_contents (bfd *abfd, asection *section,
 	      sec->flags |= SEC_IN_MEMORY;
 	      if (sec->contents == NULL)
 		return false;
+	      sec->alloced = 1;
 	    }
 	}
       if (!alpha_vms_read_sections_content (abfd, NULL))
@@ -10118,6 +10115,7 @@ _bfd_vms_set_section_contents (bfd * abfd,
       section->contents = bfd_alloc (abfd, section->size);
       if (section->contents == NULL)
 	return false;
+      section->alloced = 1;
 
       memcpy (section->contents + offset, location, (size_t) count);
     }

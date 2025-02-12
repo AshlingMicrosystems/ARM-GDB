@@ -1,5 +1,5 @@
 /* tc-m32c.c -- Assembler for the Renesas M32C.
-   Copyright (C) 2005-2024 Free Software Foundation, Inc.
+   Copyright (C) 2005-2025 Free Software Foundation, Inc.
    Contributed by RedHat.
 
    This file is part of GAS, the GNU Assembler.
@@ -223,7 +223,7 @@ m32c_indirect_operand (char *str)
 	operand = 2;
       /* [abs] where abs is not a0 or a1  */
       if (s[1] == '[' && ! (s[2] == 'a' && (s[3] == '0' || s[3] == '1'))
-	  && (ISBLANK (s[0]) || s[0] == ','))
+	  && (is_whitespace (s[0]) || s[0] == ','))
 	indirection[operand] = absolute;
       if (s[0] == ']' && s[1] == ']')
 	indirection[operand] = relative;
@@ -1032,11 +1032,10 @@ tc_gen_reloc (asection *sec, fixS *fx)
       || fx->fx_r_type == BFD_RELOC_M32C_RL_1ADDR
       || fx->fx_r_type == BFD_RELOC_M32C_RL_2ADDR)
     {
-      arelent * reloc;
+      arelent *reloc;
 
-      reloc = XNEW (arelent);
-
-      reloc->sym_ptr_ptr = XNEW (asymbol *);
+      reloc = notes_alloc (sizeof (arelent));
+      reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
       *reloc->sym_ptr_ptr = symbol_get_bfdsym (fx->fx_addsy);
       reloc->address = fx->fx_frag->fr_address + fx->fx_where;
       reloc->howto = bfd_reloc_type_lookup (stdoutput, fx->fx_r_type);
@@ -1242,19 +1241,19 @@ m32c_is_colon_insn (char *start ATTRIBUTE_UNUSED, char *nul_char)
     ++i_l_p;
 
   /* Check to see if the text following the colon is 'G' */
-  if (TOLOWER (i_l_p[1]) == 'g' && (i_l_p[2] == ' ' || i_l_p[2] == '\t'))
+  if (TOLOWER (i_l_p[1]) == 'g' && is_whitespace (i_l_p[2]))
     return restore_colon (i_l_p + 2, nul_char);
 
   /* Check to see if the text following the colon is 'Q' */
-  if (TOLOWER (i_l_p[1]) == 'q' && (i_l_p[2] == ' ' || i_l_p[2] == '\t'))
+  if (TOLOWER (i_l_p[1]) == 'q' && is_whitespace (i_l_p[2]))
     return restore_colon (i_l_p + 2, nul_char);
 
   /* Check to see if the text following the colon is 'S' */
-  if (TOLOWER (i_l_p[1]) == 's' && (i_l_p[2] == ' ' || i_l_p[2] == '\t'))
+  if (TOLOWER (i_l_p[1]) == 's' && is_whitespace (i_l_p[2]))
     return restore_colon (i_l_p + 2, nul_char);
 
   /* Check to see if the text following the colon is 'Z' */
-  if (TOLOWER (i_l_p[1]) == 'z' && (i_l_p[2] == ' ' || i_l_p[2] == '\t'))
+  if (TOLOWER (i_l_p[1]) == 'z' && is_whitespace (i_l_p[2]))
     return restore_colon (i_l_p + 2, nul_char);
 
   return 0;

@@ -1,5 +1,5 @@
 /* Generic target-file-type support for the BFD library.
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
    Written by Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -667,6 +667,13 @@ to find an alternative output format that is suitable.
 .  return abfd->xvec->keep_unused_section_symbols;
 .}
 .
+.static inline bool
+.bfd_target_supports_archives (const bfd *abfd)
+.{
+.  return (abfd->xvec->_bfd_check_format[bfd_archive]
+.	   != abfd->xvec->_bfd_check_format[bfd_unknown]);
+.}
+.
 */
 
 /* All known xvecs (even those that don't compile on all systems).
@@ -833,8 +840,6 @@ extern const bfd_target nds32_elf32_le_vec;
 extern const bfd_target nds32_elf32_linux_be_vec;
 extern const bfd_target nds32_elf32_linux_le_vec;
 extern const bfd_target nfp_elf64_vec;
-extern const bfd_target nios2_elf32_be_vec;
-extern const bfd_target nios2_elf32_le_vec;
 extern const bfd_target ns32k_aout_pc532mach_vec;
 extern const bfd_target ns32k_aout_pc532nbsd_vec;
 extern const bfd_target or1k_elf32_vec;
@@ -1216,9 +1221,6 @@ static const bfd_target * const _bfd_target_vector[] =
 #ifdef BFD64
 	&nfp_elf64_vec,
 #endif
-
-	&nios2_elf32_be_vec,
-	&nios2_elf32_le_vec,
 
 	&ns32k_aout_pc532mach_vec,
 	&ns32k_aout_pc532nbsd_vec,

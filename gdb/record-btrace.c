@@ -19,6 +19,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#include "gdbsupport/gdb_vecs.h"
 #include "record.h"
 #include "record-btrace.h"
 #include "gdbthread.h"
@@ -733,7 +734,7 @@ btrace_find_line_range (CORE_ADDR pc)
     {
       /* The test of is_stmt here was added when the is_stmt field was
 	 introduced to the 'struct linetable_entry' structure.  This
-	 ensured that this loop maintained the same behaviour as before we
+	 ensured that this loop maintained the same behavior as before we
 	 introduced is_stmt.  That said, it might be that we would be
 	 better off not checking is_stmt here, this would lead to us
 	 possibly adding more line numbers to the range.  At the time this
@@ -1940,29 +1941,29 @@ record_btrace_frame_dealloc_cache (frame_info *self, void *this_cache)
    Therefore this unwinder reports any possibly unwound registers as
    <unavailable>.  */
 
-const struct frame_unwind record_btrace_frame_unwind =
-{
+const struct frame_unwind_legacy record_btrace_frame_unwind (
   "record-btrace",
   NORMAL_FRAME,
+  FRAME_UNWIND_GDB,
   record_btrace_frame_unwind_stop_reason,
   record_btrace_frame_this_id,
   record_btrace_frame_prev_register,
   NULL,
   record_btrace_frame_sniffer,
   record_btrace_frame_dealloc_cache
-};
+);
 
-const struct frame_unwind record_btrace_tailcall_frame_unwind =
-{
+const struct frame_unwind_legacy record_btrace_tailcall_frame_unwind (
   "record-btrace tailcall",
   TAILCALL_FRAME,
+  FRAME_UNWIND_GDB,
   record_btrace_frame_unwind_stop_reason,
   record_btrace_frame_this_id,
   record_btrace_frame_prev_register,
   NULL,
   record_btrace_tailcall_frame_sniffer,
   record_btrace_frame_dealloc_cache
-};
+);
 
 /* Implement the get_unwinder method.  */
 

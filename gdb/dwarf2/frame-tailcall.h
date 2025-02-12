@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef DWARF2_FRAME_TAILCALL_H
-#define DWARF2_FRAME_TAILCALL_H 1
+#ifndef GDB_DWARF2_FRAME_TAILCALL_H
+#define GDB_DWARF2_FRAME_TAILCALL_H
 
 class frame_info_ptr;
 struct frame_unwind;
@@ -34,6 +34,6 @@ extern struct value *
   dwarf2_tailcall_prev_register_first (const frame_info_ptr &this_frame,
 				       void **tailcall_cachep, int regnum);
 
-extern const struct frame_unwind dwarf2_tailcall_frame_unwind;
+extern const struct frame_unwind_legacy dwarf2_tailcall_frame_unwind;
 
-#endif /* !DWARF2_FRAME_TAILCALL_H */
+#endif /* GDB_DWARF2_FRAME_TAILCALL_H */

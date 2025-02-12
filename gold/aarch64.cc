@@ -1,6 +1,6 @@
 // aarch64.cc -- aarch64 target support for gold.
 
-// Copyright (C) 2014-2024 Free Software Foundation, Inc.
+// Copyright (C) 2014-2025 Free Software Foundation, Inc.
 // Written by Jing Yu <jingyu@google.com> and Han Shen <shenhan@google.com>.
 
 // This file is part of gold.
@@ -2892,7 +2892,7 @@ AArch64_reloc_property_table* aarch64_reloc_property_table = NULL;
 
 // The aarch64 target class.
 // See the ABI at
-// http://infocenter.arm.com/help/topic/com.arm.doc.ihi0056b/IHI0056B_aaelf64.pdf
+// https://github.com/ARM-software/abi-aa/blob/main/aaelf64/aaelf64.rst
 template<int size, bool big_endian>
 class Target_aarch64 : public Sized_target<size, big_endian>
 {

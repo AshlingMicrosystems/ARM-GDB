@@ -26,6 +26,7 @@
 #include "symtab.h"
 #include "objfiles.h"
 #include "cli/cli-cmds.h"
+#include "cli/cli-style.h"
 #include "gdbcore.h"
 #include "gdbthread.h"
 #include "regcache.h"
@@ -70,6 +71,7 @@
 #include "gdbsupport/scoped_fd.h"
 #include "gdbsupport/scoped_restore.h"
 #include "nat/fork-inferior.h"
+#include "gdbsupport/eintr.h"
 
 /* Quick overview.
    Darwin kernel is Mach + BSD derived kernel.  Note that they share the
@@ -1604,7 +1606,7 @@ darwin_attach_pid (struct inferior *inf)
 	  if (!inf->attach_flag)
 	    {
 	      kill (inf->pid, 9);
-	      waitpid (inf->pid, &status, 0);
+	      gdb::waitpid (inf->pid, &status, 0);
 	    }
 
 	  error
@@ -1942,16 +1944,20 @@ Because `startup-with-shell' is enabled, gdb tried to work around SIP by\n\
 caching a copy of your shell.  However, this failed:\n\
 %s\n\
 If you correct the problem, gdb will automatically try again the next time\n\
-you \"run\".  To prevent these attempts, you can use:\n\
-    set startup-with-shell off"),
-		   ex.what ());
+you \"%ps\".  To prevent these attempts, you can use:\n\
+    %ps"),
+		   ex.what (),
+		   styled_string (command_style.style (), "run"),
+		   styled_string (command_style.style (),
+				  "set startup-with-shell off"));
 	  return false;
 	}
 
       gdb_printf (_("Note: this version of macOS has System Integrity Protection.\n\
 Because `startup-with-shell' is enabled, gdb has worked around this by\n\
-caching a copy of your shell.  The shell used by \"run\" is now:\n\
+caching a copy of your shell.  The shell used by \"%ps\" is now:\n\
     %s\n"),
+		  styled_string (command_style.style (), "run"),
 		  new_name.c_str ());
     }
 
@@ -2032,7 +2038,7 @@ darwin_nat_target::attach (const char *args, int from_tty)
 
   pid = parse_pid_to_attach (args);
 
-  if (pid == getpid ())		/* Trying to masturbate?  */
+  if (pid == getpid ())
     error (_("I refuse to debug myself!"));
 
   target_announce_attach (from_tty, pid);

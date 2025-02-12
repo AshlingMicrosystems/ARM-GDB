@@ -1,5 +1,5 @@
 /* ELF support for BFD.
-   Copyright (C) 1991-2024 Free Software Foundation, Inc.
+   Copyright (C) 1991-2025 Free Software Foundation, Inc.
 
    Written by Fred Fish @ Cygnus Support, from information published
    in "UNIX System V Release 4, Programmers Guide: ANSI C and
@@ -572,6 +572,7 @@
 #define SHT_GNU_HASH	             0x6ffffff6	/* GNU style symbol hash table */
 #define SHT_GNU_LIBLIST	             0x6ffffff7	/* List of prelink dependencies */
 #define SHT_CHECKSUM	             0x6ffffff8	/* Checksum for DSO content.  */
+#define SHT_GNU_OBJECT_ONLY	     0x6ffffff9	/* Object only */
 
 #define SHT_SUNW_move	             0x6ffffffa
 #define SHT_SUNW_COMDAT              0x6ffffffb
@@ -890,6 +891,7 @@
 /* Values used in GNU .note.gnu.property notes (NT_GNU_PROPERTY_TYPE_0).  */
 #define GNU_PROPERTY_STACK_SIZE			1
 #define GNU_PROPERTY_NO_COPY_ON_PROTECTED	2
+#define GNU_PROPERTY_MEMORY_SEAL		3
 
 /* A 4-byte unsigned integer property: A bit is set if it is set in all
    relocatable inputs.  */
@@ -1037,6 +1039,7 @@
 
 #define GNU_PROPERTY_AARCH64_FEATURE_1_BTI	(1U << 0)
 #define GNU_PROPERTY_AARCH64_FEATURE_1_PAC	(1U << 1)
+#define GNU_PROPERTY_AARCH64_FEATURE_1_GCS	(1U << 2)
 
 /* Values used in GNU .note.ABI-tag notes (NT_GNU_ABI_TAG).  */
 #define GNU_ABI_TAG_LINUX	0

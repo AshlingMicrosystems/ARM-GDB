@@ -179,10 +179,9 @@ register_size (struct gdbarch *gdbarch, int regnum)
 /* See gdbsupport/common-regcache.h.  */
 
 int
-regcache_register_size (const reg_buffer_common *regcache, int n)
+reg_buffer::register_size (int regnum) const
 {
-  return register_size
-    (gdb::checked_static_cast<const struct regcache *> (regcache)->arch (), n);
+  return ::register_size (this->arch (), regnum);
 }
 
 reg_buffer::reg_buffer (gdbarch *gdbarch, bool has_pseudo)
@@ -939,7 +938,7 @@ register_status
 readable_regcache::read_part (int regnum, int offset,
 			      gdb::array_view<gdb_byte> dst, bool is_raw)
 {
-  int reg_size = register_size (arch (), regnum);
+  int reg_size = register_size (regnum);
 
   gdb_assert (offset >= 0);
   gdb_assert (offset + dst.size () <= reg_size);
@@ -983,7 +982,7 @@ void
 reg_buffer::raw_collect_part (int regnum, int offset,
 			      gdb::array_view<gdb_byte> dst) const
 {
-  int reg_size = register_size (arch (), regnum);
+  int reg_size = register_size (regnum);
 
   gdb_assert (offset >= 0);
   gdb_assert (offset + dst.size () <= reg_size);
@@ -1013,7 +1012,7 @@ register_status
 regcache::write_part (int regnum, int offset,
 		      gdb::array_view<const gdb_byte> src, bool is_raw)
 {
-  int reg_size = register_size (arch (), regnum);
+  int reg_size = register_size (regnum);
 
   gdb_assert (offset >= 0);
   gdb_assert (offset + src.size () <= reg_size);
@@ -1065,7 +1064,7 @@ void
 reg_buffer::raw_supply_part (int regnum, int offset,
 			     gdb::array_view<const gdb_byte> src)
 {
-  int reg_size = register_size (arch (), regnum);
+  int reg_size = register_size (regnum);
 
   gdb_assert (offset >= 0);
   gdb_assert (offset + src.size () <= reg_size);
@@ -1236,8 +1235,7 @@ regcache::transfer_regset_register (struct regcache *out_regcache, int regnum,
 				    const gdb_byte *in_buf, gdb_byte *out_buf,
 				    int slot_size, int offs) const
 {
-  struct gdbarch *gdbarch = arch ();
-  int reg_size = std::min (register_size (gdbarch, regnum), slot_size);
+  int reg_size = std::min (register_size (regnum), slot_size);
 
   /* Use part versions and reg_size to prevent possible buffer overflows when
      accessing the regcache.  */
@@ -1254,7 +1252,7 @@ regcache::transfer_regset_register (struct regcache *out_regcache, int regnum,
   else if (in_buf != nullptr)
     {
       /* Zero-extend the register value if the slot is smaller than the register.  */
-      if (slot_size < register_size (gdbarch, regnum))
+      if (slot_size < register_size (regnum))
 	out_regcache->raw_supply_zeroed (regnum);
       out_regcache->raw_supply_part (regnum, 0,
 				     gdb::make_array_view (in_buf + offs,
@@ -1519,7 +1517,7 @@ reg_flush_command (const char *command, int from_tty)
 }
 
 void
-register_dump::dump (ui_file *file)
+register_dump::dump (ui_out *out, const char *name)
 {
   auto descr = regcache_descr (m_gdbarch);
   int regnum;
@@ -1531,107 +1529,91 @@ register_dump::dump (ui_file *file)
   gdb_assert (descr->nr_cooked_registers
 	      == gdbarch_num_cooked_regs (m_gdbarch));
 
-  for (regnum = -1; regnum < descr->nr_cooked_registers; regnum++)
-    {
-      /* Name.  */
-      if (regnum < 0)
-	gdb_printf (file, " %-10s", "Name");
-      else
-	{
-	  const char *p = gdbarch_register_name (m_gdbarch, regnum);
+  ui_out_emit_table table (out, 6 + num_additional_headers (), -1, name);
+  out->table_header (10, ui_left, "name", "Name");
+  out->table_header (4, ui_left, "num", "Nr");
+  out->table_header (4, ui_left, "relnum", "Rel");
+  out->table_header (8, ui_left, "offset", "Offset");
+  out->table_header (5, ui_left, "size", "Size");
+  out->table_header (15, ui_left, "type", "Type");
+  additional_headers (out);
+  out->table_body ();
 
-	  if (p[0] == '\0')
-	    p = "''";
-	  gdb_printf (file, " %-10s", p);
-	}
+  for (regnum = 0; regnum < descr->nr_cooked_registers; regnum++)
+    {
+      ui_out_emit_tuple tuple_emitter (out, nullptr);
+
+      /* Name.  */
+      const char *p = gdbarch_register_name (m_gdbarch, regnum);
+      if (p[0] == '\0')
+	p = "''";
+      out->field_string ("name", p);
 
       /* Number.  */
-      if (regnum < 0)
-	gdb_printf (file, " %4s", "Nr");
-      else
-	gdb_printf (file, " %4d", regnum);
+      out->field_signed ("num", regnum);
 
       /* Relative number.  */
-      if (regnum < 0)
-	gdb_printf (file, " %4s", "Rel");
-      else if (regnum < gdbarch_num_regs (m_gdbarch))
-	gdb_printf (file, " %4d", regnum);
+      if (regnum < gdbarch_num_regs (m_gdbarch))
+	out->field_signed ("relnum", regnum);
       else
-	gdb_printf (file, " %4d",
-		    (regnum - gdbarch_num_regs (m_gdbarch)));
+	out->field_signed ("relnum", (regnum - gdbarch_num_regs (m_gdbarch)));
 
       /* Offset.  */
-      if (regnum < 0)
-	gdb_printf (file, " %6s  ", "Offset");
-      else
+      if (register_offset != descr->register_offset[regnum]
+	  || (regnum > 0
+	      && (descr->register_offset[regnum]
+		  != (descr->register_offset[regnum - 1]
+		      + descr->sizeof_register[regnum - 1]))))
 	{
-	  gdb_printf (file, " %6ld",
-		      descr->register_offset[regnum]);
-	  if (register_offset != descr->register_offset[regnum]
-	      || (regnum > 0
-		  && (descr->register_offset[regnum]
-		      != (descr->register_offset[regnum - 1]
-			  + descr->sizeof_register[regnum - 1])))
-	      )
-	    {
-	      if (!footnote_register_offset)
-		footnote_register_offset = ++footnote_nr;
-	      gdb_printf (file, "*%d", footnote_register_offset);
-	    }
-	  else
-	    gdb_printf (file, "  ");
-	  register_offset = (descr->register_offset[regnum]
-			     + descr->sizeof_register[regnum]);
+	  if (!footnote_register_offset)
+	    footnote_register_offset = ++footnote_nr;
+	  std::string val = string_printf ("%ld*%d",
+					   descr->register_offset[regnum],
+					   footnote_register_offset);
+	  out->field_string ("offset", val);
 	}
+      else
+	out->field_signed ("offset", descr->register_offset[regnum]);
+      register_offset = (descr->register_offset[regnum]
+			 + descr->sizeof_register[regnum]);
 
       /* Size.  */
-      if (regnum < 0)
-	gdb_printf (file, " %5s ", "Size");
-      else
-	gdb_printf (file, " %5ld", descr->sizeof_register[regnum]);
+      out->field_signed ("size", descr->sizeof_register[regnum]);
 
       /* Type.  */
       {
 	const char *t;
 	std::string name_holder;
 
-	if (regnum < 0)
-	  t = "Type";
-	else
-	  {
-	    static const char blt[] = "builtin_type";
+	static const char blt[] = "builtin_type";
 
-	    t = register_type (m_gdbarch, regnum)->name ();
-	    if (t == NULL)
-	      {
-		if (!footnote_register_type_name_null)
-		  footnote_register_type_name_null = ++footnote_nr;
-		name_holder = string_printf ("*%d",
-					     footnote_register_type_name_null);
-		t = name_holder.c_str ();
-	      }
-	    /* Chop a leading builtin_type.  */
-	    if (startswith (t, blt))
-	      t += strlen (blt);
+	t = register_type (m_gdbarch, regnum)->name ();
+	if (t == NULL)
+	  {
+	    if (!footnote_register_type_name_null)
+	      footnote_register_type_name_null = ++footnote_nr;
+	    name_holder = string_printf ("*%d",
+					 footnote_register_type_name_null);
+	    t = name_holder.c_str ();
 	  }
-	gdb_printf (file, " %-15s", t);
+	/* Chop a leading builtin_type.  */
+	if (startswith (t, blt))
+	  t += strlen (blt);
+
+	out->field_string ("type", t);
       }
 
-      /* Leading space always present.  */
-      gdb_printf (file, " ");
+      dump_reg (out, regnum);
 
-      dump_reg (file, regnum);
-
-      gdb_printf (file, "\n");
+      out->text ("\n");
     }
 
   if (footnote_register_offset)
-    gdb_printf (file, "*%d: Inconsistent register offsets.\n",
-		footnote_register_offset);
+    out->message ("*%d: Inconsistent register offsets.\n",
+		  footnote_register_offset);
   if (footnote_register_type_name_null)
-    gdb_printf (file,
-		"*%d: Register type's name NULL.\n",
-		footnote_register_type_name_null);
+    out->message ("*%d: Register type's name NULL.\n",
+		  footnote_register_type_name_null);
 }
 
 #if GDB_SELF_TEST

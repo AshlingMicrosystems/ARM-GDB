@@ -19,6 +19,7 @@
 
 #include <ctype.h>
 #include "gdbsupport/gdb_wait.h"
+#include "gdbsupport/scoped_signal_handler.h"
 #include "event-top.h"
 #include "gdbthread.h"
 #include "fnmatch.h"
@@ -81,6 +82,7 @@
 #include "pager.h"
 #include "run-on-main-thread.h"
 #include "gdbsupport/gdb_tilde_expand.h"
+#include "gdbsupport/eintr.h"
 
 void (*deprecated_error_begin_hook) (void);
 
@@ -3467,35 +3469,19 @@ wait_to_die_with_timeout (pid_t pid, int *status, int timeout)
   if (timeout > 0)
     {
 #ifdef SIGALRM
-#if defined (HAVE_SIGACTION) && defined (SA_RESTART)
-      struct sigaction sa, old_sa;
-
-      sa.sa_handler = sigalrm_handler;
-      sigemptyset (&sa.sa_mask);
-      sa.sa_flags = 0;
-      sigaction (SIGALRM, &sa, &old_sa);
-#else
-      sighandler_t ofunc;
-
-      ofunc = signal (SIGALRM, sigalrm_handler);
-#endif
+      scoped_signal_handler<SIGALRM> alarm_restore (sigalrm_handler);
 
       alarm (timeout);
 #endif
 
-      waitpid_result = waitpid (pid, status, 0);
+      waitpid_result = gdb::waitpid (pid, status, 0);
 
 #ifdef SIGALRM
       alarm (0);
-#if defined (HAVE_SIGACTION) && defined (SA_RESTART)
-      sigaction (SIGALRM, &old_sa, NULL);
-#else
-      signal (SIGALRM, ofunc);
-#endif
 #endif
     }
   else
-    waitpid_result = waitpid (pid, status, WNOHANG);
+    waitpid_result = gdb::waitpid (pid, status, WNOHANG);
 
   if (waitpid_result == pid)
     return pid;
@@ -3505,8 +3491,8 @@ wait_to_die_with_timeout (pid_t pid, int *status, int timeout)
 
 #endif /* HAVE_WAITPID */
 
-/* Provide fnmatch compatible function for FNM_FILE_NAME matching of host files.
-   Both FNM_FILE_NAME and FNM_NOESCAPE must be set in FLAGS.
+/* Provide fnmatch compatible function for matching of host files.
+   FNM_NOESCAPE must be set in FLAGS.
 
    It handles correctly HAVE_DOS_BASED_FILE_SYSTEM and
    HAVE_CASE_INSENSITIVE_FILE_SYSTEM.  */
@@ -3514,8 +3500,6 @@ wait_to_die_with_timeout (pid_t pid, int *status, int timeout)
 int
 gdb_filename_fnmatch (const char *pattern, const char *string, int flags)
 {
-  gdb_assert ((flags & FNM_FILE_NAME) != 0);
-
   /* It is unclear how '\' escaping vs. directory separator should coexist.  */
   gdb_assert ((flags & FNM_NOESCAPE) != 0);
 

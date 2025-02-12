@@ -1,5 +1,5 @@
 /* Meta support for 32-bit ELF
-   Copyright (C) 2013-2024 Free Software Foundation, Inc.
+   Copyright (C) 2013-2025 Free Software Foundation, Inc.
    Contributed by Imagination Technologies Ltd.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -1022,8 +1022,7 @@ elf_metag_link_hash_table_create (bfd *abfd)
 
   if (!_bfd_elf_link_hash_table_init (&htab->etab, abfd,
 				      metag_link_hash_newfunc,
-				      sizeof (struct elf_metag_link_hash_entry),
-				      METAG_ELF_DATA))
+				      sizeof (struct elf_metag_link_hash_entry)))
     {
       free (htab);
       return NULL;
@@ -2741,6 +2740,7 @@ elf_metag_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
 	    abort ();
 	  s->size = sizeof ELF_DYNAMIC_INTERPRETER;
 	  s->contents = (unsigned char *) ELF_DYNAMIC_INTERPRETER;
+	  s->alloced = 1;
 	}
     }
 
@@ -2885,7 +2885,8 @@ elf_metag_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       s->contents = bfd_zalloc (dynobj, s->size);
       if (s->contents == NULL)
 	return false;
-      else if (reloc_section)
+      s->alloced = 1;
+      if (reloc_section)
 	{
 	  unsigned char *contents = s->contents;
 	  Elf32_External_Rela reloc;
@@ -3965,6 +3966,7 @@ elf_metag_build_stubs (struct bfd_link_info *info)
       stub_sec->contents = bfd_zalloc (htab->stub_bfd, size);
       if (stub_sec->contents == NULL && size != 0)
 	return false;
+      stub_sec->alloced = 1;
       stub_sec->size = 0;
     }
 

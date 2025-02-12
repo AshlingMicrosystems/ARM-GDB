@@ -1,6 +1,6 @@
 /* spu.c -- Assembler for the IBM Synergistic Processing Unit (SPU)
 
-   Copyright (C) 2006-2024 Free Software Foundation, Inc.
+   Copyright (C) 2006-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -263,7 +263,7 @@ md_assemble (char *op)
 
   /* skip over instruction to find parameters */
 
-  for (param = op; *param != 0 && !ISSPACE (*param); param++)
+  for (param = op; !is_end_of_stmt (*param) && !is_whitespace (*param); param++)
     ;
   c = *param;
   *param = 0;
@@ -388,7 +388,7 @@ calcop (struct spu_opcode *format, const char *param, struct spu_insn *insn)
       arg = format->arg[i];
       syntax_error_arg = i;
 
-      while (ISSPACE (*param))
+      while (is_whitespace (*param))
         param++;
       if (*param == 0 || *param == ',')
 	return 0;
@@ -406,7 +406,7 @@ calcop (struct spu_opcode *format, const char *param, struct spu_insn *insn)
       if (!param)
 	return 0;
 
-      while (ISSPACE (*param))
+      while (is_whitespace (*param))
         param++;
 
       if (arg != A_P && paren)
@@ -426,7 +426,7 @@ calcop (struct spu_opcode *format, const char *param, struct spu_insn *insn)
 	    }
 	}
     }
-  while (ISSPACE (*param))
+  while (is_whitespace (*param))
     param++;
   return !paren && (*param == 0 || *param == '\n');
 }
@@ -867,8 +867,8 @@ arelent *
 tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 {
   arelent *reloc;
-  reloc = XNEW (arelent);
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
   reloc->howto = bfd_reloc_type_lookup (stdoutput, fixp->fx_r_type);
@@ -877,8 +877,6 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
       as_bad_where (fixp->fx_file, fixp->fx_line,
 		    _("reloc %d not supported by object file format"),
 		    (int) fixp->fx_r_type);
-      free (reloc->sym_ptr_ptr);
-      free (reloc);
       return NULL;
     }
   reloc->addend = fixp->fx_addnumber;

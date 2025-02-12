@@ -1,6 +1,6 @@
 ## Process this file with automake to generate Makefile.in
 #
-#   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+#   Copyright (C) 2012-2025 Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -333,8 +333,6 @@ ALL_EMULATION_SOURCES = \
 	ends32elf.c \
 	ends32elf16m.c \
 	ends32elf_linux.c \
-	enios2elf.c \
-	enios2linux.c \
 	ens32knbsd.c \
 	epc532macha.c \
 	epdp11.c \

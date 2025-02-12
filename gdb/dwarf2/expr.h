@@ -19,11 +19,12 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#if !defined (DWARF2EXPR_H)
-#define DWARF2EXPR_H
+#ifndef GDB_DWARF2_EXPR_H
+#define GDB_DWARF2_EXPR_H
 
 #include "leb128.h"
 #include "dwarf2/call-site.h"
+#include "dwarf2.h"
 
 struct dwarf2_per_objfile;
 
@@ -54,6 +55,9 @@ enum dwarf_value_location
 /* A piece of an object, as recorded by DW_OP_piece or DW_OP_bit_piece.  */
 struct dwarf_expr_piece
 {
+  /* The DWARF operation for which the piece was created.  */
+  enum dwarf_location_atom op;
+
   enum dwarf_value_location location;
 
   union
@@ -208,7 +212,7 @@ private:
   struct type *address_type () const;
   void push (struct value *value, bool in_stack_memory);
   bool stack_empty_p () const;
-  void add_piece (ULONGEST size, ULONGEST offset);
+  void add_piece (ULONGEST size, ULONGEST offset, enum dwarf_location_atom op);
   void execute_stack_op (const gdb_byte *op_ptr, const gdb_byte *op_end);
   void pop ();
   struct value *fetch (int n);
@@ -320,4 +324,4 @@ extern const gdb_byte *safe_read_sleb128 (const gdb_byte *buf,
 extern const gdb_byte *safe_skip_leb128 (const gdb_byte *buf,
 					 const gdb_byte *buf_end);
 
-#endif /* DWARF2EXPR_H */
+#endif /* GDB_DWARF2_EXPR_H */

@@ -30,7 +30,7 @@
 #include "gdbsupport/iterator-range.h"
 #include "dwarf2/mapped-index.h"
 #include "dwarf2/read.h"
-#include "dwarf2/abbrev-cache.h"
+#include "dwarf2/abbrev-table-cache.h"
 #include "dwarf2/parent-map.h"
 #include "gdbsupport/range-chain.h"
 #include "complaints.h"
@@ -319,6 +319,9 @@ private:
      found.  */
   dwarf2_per_cu_data *lookup (unrelocated_addr addr)
   {
+    if (m_addrmap == nullptr)
+      return nullptr;
+
     return (static_cast<dwarf2_per_cu_data *>
 	    (m_addrmap->find ((CORE_ADDR) addr)));
   }
@@ -364,6 +367,8 @@ private:
   std::vector<gdb::unique_xmalloc_ptr<char>> m_names;
 };
 
+using cooked_index_shard_up = std::unique_ptr<cooked_index_shard>;
+
 class cutu_reader;
 
 /* An instance of this is created when scanning DWARF to create a
@@ -376,11 +381,9 @@ public:
   cooked_index_storage ();
   DISABLE_COPY_AND_ASSIGN (cooked_index_storage);
 
-  /* Return the current abbrev cache.  */
-  abbrev_cache *get_abbrev_cache ()
-  {
-    return &m_abbrev_cache;
-  }
+  /* Return the current abbrev table_cache.  */
+  const abbrev_table_cache &get_abbrev_table_cache () const
+  { return m_abbrev_table_cache; }
 
   /* Return the DIE reader corresponding to PER_CU.  If no such reader
      has been registered, return NULL.  */
@@ -436,8 +439,9 @@ private:
   /* Equality function for cutu_reader.  */
   static int eq_cutu_reader (const void *a, const void *b);
 
-  /* The abbrev cache used by this indexer.  */
-  abbrev_cache m_abbrev_cache;
+  /* The abbrev table cache used by this indexer.  */
+  abbrev_table_cache m_abbrev_table_cache;
+
   /* A hash table of cutu_reader objects.  */
   htab_up m_reader_hash;
   /* The index shard that is being constructed.  */
@@ -622,11 +626,6 @@ protected:
 class cooked_index : public dwarf_scanner_base
 {
 public:
-
-  /* A convenience typedef for the vector that is contained in this
-     object.  */
-  using vec_type = std::vector<std::unique_ptr<cooked_index_shard>>;
-
   cooked_index (dwarf2_per_objfile *per_objfile,
 		std::unique_ptr<cooked_index_worker> &&worker);
   ~cooked_index () override;
@@ -634,7 +633,7 @@ public:
   DISABLE_COPY_AND_ASSIGN (cooked_index);
 
   /* Start reading the DWARF.  */
-  void start_reading ();
+  void start_reading () override;
 
   /* Called by cooked_index_worker to set the contents of this index
      and transition to the MAIN_AVAILABLE state.  WARN is used to
@@ -642,7 +641,8 @@ public:
      PARENT_MAPS is used when resolving pending parent links.
      PARENT_MAPS may be NULL if there are no IS_PARENT_DEFERRED
      entries in VEC.  */
-  void set_contents (vec_type &&vec, deferred_warnings *warn,
+  void set_contents (std::vector<cooked_index_shard_up> &&vec,
+		     deferred_warnings *warn,
 		     const parent_map_map *parent_maps);
 
   /* A range over a vector of subranges.  */
@@ -658,9 +658,9 @@ public:
   {
     wait (cooked_state::FINALIZED, true);
     std::vector<cooked_index_shard::range> result_range;
-    result_range.reserve (m_vector.size ());
-    for (auto &entry : m_vector)
-      result_range.push_back (entry->all_entries ());
+    result_range.reserve (m_shards.size ());
+    for (auto &shard : m_shards)
+      result_range.push_back (shard->all_entries ());
     return range (std::move (result_range));
   }
 
@@ -670,7 +670,9 @@ public:
   dwarf2_per_cu_data *lookup (unrelocated_addr addr) override;
 
   /* Return a new vector of all the addrmaps used by all the indexes
-     held by this object.  */
+     held by this object.
+
+     Elements of the vector may be nullptr.  */
   std::vector<const addrmap *> get_addrmaps ();
 
   /* Return the entry that is believed to represent the program's
@@ -708,7 +710,7 @@ private:
 
   /* The vector of cooked_index objects.  This is stored because the
      entries are stored on the obstacks in those objects.  */
-  vec_type m_vector;
+  std::vector<cooked_index_shard_up> m_shards;
 
   /* This tracks the current state.  When this is nullptr, it means
      that the state is CACHE_DONE -- it's important to note that only

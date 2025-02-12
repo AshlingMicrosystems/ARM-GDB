@@ -205,15 +205,13 @@ static void
 amd64_windows_store_arg_in_reg (struct regcache *regcache,
 				struct value *arg, int regno)
 {
-  struct type *type = arg->type ();
-  const gdb_byte *valbuf = arg->contents ().data ();
+  gdb::array_view<const gdb_byte> valbuf = arg->contents ();
   /* We only set 8 bytes, buf if it's a XMM register, 16 bytes are read.  */
-  std::array<gdb_byte, 16> buf;
+  std::array<gdb_byte, 16> buf {};
 
-  gdb_assert (type->length () <= 8);
-  memset (buf.data (), 0, buf.size ());
-  memcpy (buf.data (), valbuf, std::min (type->length (), (ULONGEST) 8));
-  size_t reg_size = regcache_register_size (regcache, regno);
+  gdb_assert (valbuf.size () <= 8);
+  std::copy (valbuf.begin (), valbuf.end (), buf.begin ());
+  size_t reg_size = regcache->register_size (regno);
   gdb_assert (reg_size <= buf.size ());
   gdb::array_view<gdb_byte> view (buf);
   regcache->cooked_write (regno, view.slice (0, reg_size));
@@ -803,7 +801,7 @@ amd64_windows_frame_decode_insns (const frame_info_ptr &this_frame,
 	  std::array<gdb_byte, 8> buf;
 	  int frreg = amd64_windows_w2gdb_regnum[frame_reg];
 
-	  get_frame_register (this_frame, frreg, buf.data ());
+	  get_frame_register (this_frame, frreg, buf);
 	  save_addr = extract_unsigned_integer (buf, byte_order);
 
 	  frame_debug_printf ("   frame_reg=%s, val=%s",
@@ -1099,7 +1097,7 @@ amd64_windows_frame_cache (const frame_info_ptr &this_frame, void **this_cache)
 
   /* Get current PC and SP.  */
   pc = get_frame_pc (this_frame);
-  get_frame_register (this_frame, AMD64_RSP_REGNUM, buf.data ());
+  get_frame_register (this_frame, AMD64_RSP_REGNUM, buf);
   cache->sp = extract_unsigned_integer (buf, byte_order);
   cache->pc = pc;
 
@@ -1186,16 +1184,16 @@ amd64_windows_frame_this_id (const frame_info_ptr &this_frame, void **this_cache
 
 /* Windows x64 SEH unwinder.  */
 
-static const struct frame_unwind amd64_windows_frame_unwind =
-{
+static const struct frame_unwind_legacy amd64_windows_frame_unwind (
   "amd64 windows",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   default_frame_unwind_stop_reason,
   &amd64_windows_frame_this_id,
   &amd64_windows_frame_prev_register,
   NULL,
   default_frame_sniffer
-};
+);
 
 /* Implement the "skip_prologue" gdbarch method.  */
 

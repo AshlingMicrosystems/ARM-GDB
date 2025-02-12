@@ -18,8 +18,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef EXTENSION_PRIV_H
-#define EXTENSION_PRIV_H
+#ifndef GDB_EXTENSION_PRIV_H
+#define GDB_EXTENSION_PRIV_H
 
 #include "extension.h"
 #include <signal.h>
@@ -201,7 +201,8 @@ struct extension_language_ops
      COPIED_TYPES is used to prevent cycles / duplicates and is passed to
      preserve_one_value.  */
   void (*preserve_values) (const struct extension_language_defn *,
-			   struct objfile *objfile, htab_t copied_types);
+			   struct objfile *objfile,
+			   copied_types_hash_t &copied_types);
 
   /* Return non-zero if there is a stop condition for the breakpoint.
      This is used to implement the restriction that a breakpoint may have
@@ -338,4 +339,4 @@ extern struct active_ext_lang_state *set_active_ext_lang
 
 extern void restore_active_ext_lang (struct active_ext_lang_state *previous);
 
-#endif /* EXTENSION_PRIV_H */
+#endif /* GDB_EXTENSION_PRIV_H */

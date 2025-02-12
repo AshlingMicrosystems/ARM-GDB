@@ -1,6 +1,6 @@
 /* tc-loongarch.c -- Assemble for the LoongArch ISA
 
-   Copyright (C) 2021-2024 Free Software Foundation, Inc.
+   Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Loongson Ltd.
 
    This file is part of GAS.
@@ -276,6 +276,8 @@ static struct htab *c_htab = NULL;
 static struct htab *cr_htab = NULL;
 static struct htab *v_htab = NULL;
 static struct htab *x_htab = NULL;
+static struct htab *cfi_r_htab = NULL;
+static struct htab *cfi_f_htab = NULL;
 
 void
 loongarch_after_parse_args ()
@@ -322,15 +324,27 @@ loongarch_after_parse_args ()
   if (!r_deprecated_htab)
     r_deprecated_htab = str_htab_create (),
 			str_hash_insert (r_deprecated_htab, "", 0, 0);
+  /* Init cfi registers alias.  */
+  if (!cfi_r_htab)
+    cfi_r_htab = str_htab_create (), str_hash_insert (cfi_r_htab, "", 0, 0);
 
   r_abi_names = loongarch_r_normal_name;
   for (i = 0; i < ARRAY_SIZE (loongarch_r_normal_name); i++)
-    str_hash_insert (r_htab, loongarch_r_normal_name[i], (void *) (i + 1), 0);
-
+    {
+      str_hash_insert (r_htab, loongarch_r_normal_name[i],
+		       (void *) (i + 1), 0);
+      str_hash_insert (cfi_r_htab, loongarch_r_normal_name[i],
+		       (void *) (i + 1), 0);
+    }
   /* Init ilp32/lp64 registers alias.  */
   r_abi_names = loongarch_r_alias;
   for (i = 0; i < ARRAY_SIZE (loongarch_r_alias); i++)
-    str_hash_insert (r_htab, loongarch_r_alias[i], (void *) (i + 1), 0);
+    {
+      str_hash_insert (r_htab, loongarch_r_alias[i],
+		       (void *) (i + 1), 0);
+      str_hash_insert (cfi_r_htab, loongarch_r_alias[i],
+		       (void *) (i + 1), 0);
+    }
 
   for (i = 0; i < ARRAY_SIZE (loongarch_r_alias_1); i++)
     str_hash_insert (r_htab, loongarch_r_alias_1[i], (void *) (i + 1), 0);
@@ -338,6 +352,15 @@ loongarch_after_parse_args ()
   for (i = 0; i < ARRAY_SIZE (loongarch_r_alias_deprecated); i++)
     str_hash_insert (r_deprecated_htab, loongarch_r_alias_deprecated[i],
 	(void *) (i + 1), 0);
+
+  /* The .cfi directive supports register aliases without the "$" prefix.  */
+  for (i = 0; i < ARRAY_SIZE (loongarch_r_cfi_name); i++)
+    {
+      str_hash_insert (cfi_r_htab, loongarch_r_cfi_name[i],
+		       (void *)(i + 1), 0);
+      str_hash_insert (cfi_r_htab, loongarch_r_cfi_name_alias[i],
+		       (void *)(i + 1), 0);
+    }
 
   if (!cr_htab)
     cr_htab = str_htab_create (), str_hash_insert (cr_htab, "", 0, 0);
@@ -353,20 +376,38 @@ loongarch_after_parse_args ()
       if (!f_deprecated_htab)
 	f_deprecated_htab = str_htab_create (),
 			    str_hash_insert (f_deprecated_htab, "", 0, 0);
+      if (!cfi_f_htab)
+	cfi_f_htab = str_htab_create (), str_hash_insert (cfi_f_htab, "", 0, 0);
 
       f_abi_names = loongarch_f_normal_name;
       for (i = 0; i < ARRAY_SIZE (loongarch_f_normal_name); i++)
-	str_hash_insert (f_htab, loongarch_f_normal_name[i], (void *) (i + 1),
-			 0);
-
+	{
+	  str_hash_insert (f_htab, loongarch_f_normal_name[i],
+			   (void *) (i + 1), 0);
+	  str_hash_insert (cfi_f_htab, loongarch_f_normal_name[i],
+			   (void *) (i + 1), 0);
+	}
       /* Init float-ilp32/lp64 registers alias.  */
       f_abi_names = loongarch_f_alias;
       for (i = 0; i < ARRAY_SIZE (loongarch_f_alias); i++)
-	str_hash_insert (f_htab, loongarch_f_alias[i],
-	    (void *) (i + 1), 0);
+	{
+	  str_hash_insert (f_htab, loongarch_f_alias[i],
+			   (void *) (i + 1), 0);
+	  str_hash_insert (cfi_f_htab, loongarch_f_alias[i],
+			   (void *) (i + 1), 0);
+	}
       for (i = 0; i < ARRAY_SIZE (loongarch_f_alias_deprecated); i++)
 	str_hash_insert (f_deprecated_htab, loongarch_f_alias_deprecated[i],
 	    (void *) (i + 1), 0);
+
+  /* The .cfi directive supports register aliases without the "$" prefix.  */
+  for (i = 0; i < ARRAY_SIZE (loongarch_f_cfi_name); i++)
+    {
+      str_hash_insert (cfi_f_htab, loongarch_f_cfi_name[i],
+		       (void *)(i + 1), 0);
+      str_hash_insert (cfi_f_htab, loongarch_f_cfi_name_alias[i],
+		       (void *)(i + 1), 0);
+    }
 
       if (!fc_htab)
 	fc_htab = str_htab_create (), str_hash_insert (fc_htab, "", 0, 0);
@@ -1383,9 +1424,9 @@ loongarch_assemble_INSNs (char *str, unsigned int expand_from_macro)
       the_one.name = str;
       the_one.expand_from_macro = expand_from_macro;
 
-      for (; *str && *str != ' '; str++)
+      for (; *str && !is_whitespace (*str); str++)
 	;
-      if (*str == ' ')
+      if (is_whitespace (*str))
 	*str++ = '\0';
 
       loongarch_split_args_by_comma (str, the_one.arg_strs);
@@ -1838,9 +1879,10 @@ md_estimate_size_before_relax (fragS *fragp, asection *sec)
 arelent *
 tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixp)
 {
-  arelent *reloc = (arelent *) xmalloc (sizeof (arelent));
+  arelent *reloc;
 
-  reloc->sym_ptr_ptr = (asymbol **) xmalloc (sizeof (asymbol *));
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
   reloc->addend = fixp->fx_offset;
@@ -1863,6 +1905,46 @@ loongarch_cfi_frame_initial_instructions (void)
 {
   cfi_add_CFA_def_cfa_register (3 /* $sp */);
 }
+
+/* Convert REGNAME to a DWARF register number.  */
+int
+tc_loongarch_regname_to_dw2regnum (char *regname)
+{
+  int reg;
+
+  /* Look up in the general purpose register table.  */
+  if ((reg = (intptr_t) str_hash_find (cfi_r_htab, regname)) > 0)
+    return reg - 1;
+
+  /* Look up in the floating point register table.  */
+  if ((reg = (intptr_t) str_hash_find (cfi_f_htab, regname)) > 0)
+    return reg + 31;
+
+  as_bad (_("unknown register `%s`"), regname);
+  return -1;
+}
+
+/* Derived from tc_parse_to_dw2regnum, but excluding the case where
+   the prefix '%'.  */
+void
+tc_loongarch_parse_to_dw2regnum (expressionS *exp)
+{
+  SKIP_WHITESPACE ();
+  if (is_name_beginner (*input_line_pointer))
+    {
+      char *name, c;
+
+      c = get_symbol_name (& name);
+
+      exp->X_op = O_constant;
+      exp->X_add_number = tc_loongarch_regname_to_dw2regnum (name);
+
+      restore_line_pointer (c);
+    }
+  else
+    expression_and_evaluate (exp);
+}
+
 
 void
 loongarch_pre_output_hook (void)
@@ -1907,12 +1989,6 @@ loongarch_pre_output_hook (void)
 
   /* Restore the original segment info.  */
   subseg_set (seg, subseg);
-}
-
-void
-tc_loongarch_parse_to_dw2regnum (expressionS *exp)
-{
-  expression_and_evaluate (exp);
 }
 
 void

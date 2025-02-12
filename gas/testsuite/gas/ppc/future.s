@@ -16,3 +16,36 @@ _start:
 	stxvrll	 41,10,16
 	stxvprl	 40,10,17
 	stxvprll 42,10,18
+	xvrlw	 31,41,51
+	xvadduwm 30,42,52
+	xvadduhm 30,42,53
+	xvsubuwm 29,43,54
+	xvsubuhm 63,0,30
+	xvmuluwm 30,40,60
+	xvmuluhm 60,61,62
+	xvmulhsw 34,35,36
+	xvmulhsh 1,2,3
+	xvmulhuw 20,21,22
+	xvmulhuh 20,42,52
+	xxaesencp 2, 4, 6, 0
+	xxaes128encp 2, 4, 6
+	xxaesencp 2, 4, 36, 1
+	xxaes192encp 2, 4, 36
+	xxaesencp 32, 34, 36, 2
+	xxaes256encp 32, 34, 36
+	xxaesdecp 2, 4, 6, 0
+	xxaes128decp 2, 4, 6
+	xxaesdecp 2, 4, 36, 1
+	xxaes192decp 2, 4, 36
+	xxaesdecp 32, 34, 36, 2
+	xxaes256decp 32, 34, 36
+	xxaesgenlkp 16, 18, 0
+	xxaes128genlkp 16, 18
+	xxaesgenlkp 40, 50, 1
+	xxaes192genlkp 40, 50
+	xxaesgenlkp 20, 54, 2
+	xxaes256genlkp 20, 54
+	xxgfmul128 1, 2, 3, 0
+	xxgfmul128gcm 1, 2, 3
+	xxgfmul128 31, 32, 33, 1
+	xxgfmul128xts 31, 32, 33

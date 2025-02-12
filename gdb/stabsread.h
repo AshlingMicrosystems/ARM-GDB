@@ -1,5 +1,5 @@
-  /* Include file for stabs debugging format support functions.
-     Copyright (C) 1986-2024 Free Software Foundation, Inc.
+/* Include file for stabs debugging format support functions.
+   Copyright (C) 1986-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -16,8 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef STABSREAD_H
-#define STABSREAD_H
+#ifndef GDB_STABSREAD_H
+#define GDB_STABSREAD_H
 
 struct objfile;
 struct legacy_psymtab;
@@ -202,9 +202,6 @@ extern void coffstab_build_psymtabs
    const std::vector<asection *> &stabs,
    file_ptr stabstroffset, unsigned int stabstrsize);
 
-extern void stabsect_build_psymtabs (struct objfile *objfile, char *stab_name,
-				     char *stabstr_name, char *text_name);
-
 extern int symbol_reference_defined (const char **);
 
 extern void ref_add (int, struct symbol *, const char *, CORE_ADDR);
@@ -308,4 +305,4 @@ struct symloc
     int file_string_offset;
     enum language pst_language;
   };
-#endif /* STABSREAD_H */
+#endif /* GDB_STABSREAD_H */

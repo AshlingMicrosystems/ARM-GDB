@@ -1,5 +1,5 @@
 /* BFD back-end for HP PA-RISC ELF files.
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    Original code by
 	Center for Software Science
@@ -418,8 +418,7 @@ elf32_hppa_link_hash_table_create (bfd *abfd)
     return NULL;
 
   if (!_bfd_elf_link_hash_table_init (&htab->etab, abfd, hppa_link_hash_newfunc,
-				      sizeof (struct elf32_hppa_link_hash_entry),
-				      HPPA32_ELF_DATA))
+				      sizeof (struct elf32_hppa_link_hash_entry)))
     {
       free (htab);
       return NULL;
@@ -2069,6 +2068,7 @@ elf32_hppa_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
 	    abort ();
 	  sec->size = sizeof ELF_DYNAMIC_INTERPRETER;
 	  sec->contents = (unsigned char *) ELF_DYNAMIC_INTERPRETER;
+	  sec->alloced = 1;
 	}
 
       /* Force millicode symbols local.  */
@@ -2273,6 +2273,7 @@ elf32_hppa_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       sec->contents = bfd_zalloc (dynobj, sec->size);
       if (sec->contents == NULL)
 	return false;
+      sec->alloced = 1;
     }
 
   return _bfd_elf_add_dynamic_tags (output_bfd, info, relocs);
@@ -2996,6 +2997,7 @@ elf32_hppa_build_stubs (struct bfd_link_info *info)
 	stub_sec->contents = bfd_zalloc (htab->stub_bfd, stub_sec->size);
 	if (stub_sec->contents == NULL)
 	  return false;
+	stub_sec->alloced = 1;
 	stub_sec->size = 0;
       }
 

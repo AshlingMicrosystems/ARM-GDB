@@ -1,5 +1,5 @@
 /* tc-mn10200.c -- Assembler code for the Matsushita 10200
-   Copyright (C) 1996-2024 Free Software Foundation, Inc.
+   Copyright (C) 1996-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -748,7 +748,10 @@ arelent *
 tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 {
   arelent *reloc;
-  reloc = XNEW (arelent);
+
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
+  *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
 
   if (fixp->fx_subsy != NULL)
     {
@@ -774,8 +777,6 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
       return NULL;
     }
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
-  *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
   reloc->addend = fixp->fx_offset;
   return reloc;
 }
@@ -877,7 +878,7 @@ md_assemble (char *str)
   int match;
 
   /* Get the opcode.  */
-  for (s = str; *s != '\0' && !ISSPACE (*s); s++)
+  for (s = str; !is_end_of_stmt (*s) && !is_whitespace (*s); s++)
     ;
   if (*s != '\0')
     *s++ = '\0';
@@ -891,7 +892,7 @@ md_assemble (char *str)
     }
 
   str = s;
-  while (ISSPACE (*str))
+  while (is_whitespace (*str))
     ++str;
 
   input_line_pointer = str;
@@ -928,7 +929,7 @@ md_assemble (char *str)
 
 	  errmsg = NULL;
 
-	  while (*str == ' ' || *str == ',')
+	  while (is_whitespace (*str) || *str == ',')
 	    ++str;
 
 	  if (operand->flags & MN10200_OPERAND_RELAX)
@@ -1101,7 +1102,7 @@ md_assemble (char *str)
 	  str = input_line_pointer;
 	  input_line_pointer = hold;
 
-	  while (*str == ' ' || *str == ',')
+	  while (is_whitespace (*str) || *str == ',')
 	    ++str;
 
 	}
@@ -1126,10 +1127,10 @@ md_assemble (char *str)
       break;
     }
 
-  while (ISSPACE (*str))
+  while (is_whitespace (*str))
     ++str;
 
-  if (*str != '\0')
+  if (!is_end_of_stmt (*str))
     as_bad (_("junk at end of line: `%s'"), str);
 
   input_line_pointer = str;

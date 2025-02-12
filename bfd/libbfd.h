@@ -7,7 +7,7 @@
 /* libbfd.h -- Declarations used by bfd library *implementation*.
    (This include file is not for users of the library.)
 
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    Written by Cygnus Support.
 
@@ -254,7 +254,7 @@ extern int bfd_generic_stat_arch_elt
 #define _bfd_read_ar_hdr(abfd) \
 	BFD_SEND (abfd, _bfd_read_ar_hdr_fn, (abfd))
 #define _bfd_write_ar_hdr(archive, abfd)	 \
-	BFD_SEND (abfd, _bfd_write_ar_hdr_fn, (archive, abfd))
+	BFD_SEND (archive, _bfd_write_ar_hdr_fn, (archive, abfd))
 
 /* Generic routines to use for BFD_JUMP_TABLE_GENERIC.  Use
    BFD_JUMP_TABLE_GENERIC (_bfd_generic).  */
@@ -421,7 +421,7 @@ extern bool _bfd_vms_lib_ia64_mkarchive
 /* Routines to use for BFD_JUMP_TABLE_SYMBOLS where there is no symbol
    support.  Use BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols).  */
 
-#define _bfd_nosymbols_get_symtab_upper_bound _bfd_long_bfd_n1_error
+#define _bfd_nosymbols_get_symtab_upper_bound _bfd_long_bfd_0
 extern long _bfd_nosymbols_canonicalize_symtab
   (bfd *, asymbol **) ATTRIBUTE_HIDDEN;
 #define _bfd_nosymbols_make_empty_symbol _bfd_generic_make_empty_symbol
@@ -963,8 +963,6 @@ bool bfd_write_bigendian_4byte_int (bfd *, unsigned int) ATTRIBUTE_HIDDEN;
 unsigned int bfd_log2 (bfd_vma x) ATTRIBUTE_HIDDEN;
 
 /* Extracted from bfd.c.  */
-void _bfd_clear_error_data (void) ATTRIBUTE_HIDDEN;
-
 char *bfd_asprintf (const char *fmt, ...) ATTRIBUTE_HIDDEN;
 
 /* Cached _bfd_check_format messages are put in this.  */
@@ -992,6 +990,8 @@ struct per_xvec_messages *_bfd_set_error_handler_caching (struct per_xvec_messag
 void _bfd_restore_error_handler_caching (struct per_xvec_messages *) ATTRIBUTE_HIDDEN;
 
 const char *_bfd_get_error_program_name (void) ATTRIBUTE_HIDDEN;
+
+bool _bfd_threading_enabled (void) ATTRIBUTE_HIDDEN;
 
 bool bfd_lock (void) ATTRIBUTE_HIDDEN;
 
@@ -2895,58 +2895,6 @@ static const char *const bfd_reloc_code_real_names[] = { "@@uninitialized@@",
   "BFD_RELOC_MSP430_SYM_DIFF",
   "BFD_RELOC_MSP430_SET_ULEB128",
   "BFD_RELOC_MSP430_SUB_ULEB128",
-  "BFD_RELOC_NIOS2_S16",
-  "BFD_RELOC_NIOS2_U16",
-  "BFD_RELOC_NIOS2_CALL26",
-  "BFD_RELOC_NIOS2_IMM5",
-  "BFD_RELOC_NIOS2_CACHE_OPX",
-  "BFD_RELOC_NIOS2_IMM6",
-  "BFD_RELOC_NIOS2_IMM8",
-  "BFD_RELOC_NIOS2_HI16",
-  "BFD_RELOC_NIOS2_LO16",
-  "BFD_RELOC_NIOS2_HIADJ16",
-  "BFD_RELOC_NIOS2_GPREL",
-  "BFD_RELOC_NIOS2_UJMP",
-  "BFD_RELOC_NIOS2_CJMP",
-  "BFD_RELOC_NIOS2_CALLR",
-  "BFD_RELOC_NIOS2_ALIGN",
-  "BFD_RELOC_NIOS2_GOT16",
-  "BFD_RELOC_NIOS2_CALL16",
-  "BFD_RELOC_NIOS2_GOTOFF_LO",
-  "BFD_RELOC_NIOS2_GOTOFF_HA",
-  "BFD_RELOC_NIOS2_PCREL_LO",
-  "BFD_RELOC_NIOS2_PCREL_HA",
-  "BFD_RELOC_NIOS2_TLS_GD16",
-  "BFD_RELOC_NIOS2_TLS_LDM16",
-  "BFD_RELOC_NIOS2_TLS_LDO16",
-  "BFD_RELOC_NIOS2_TLS_IE16",
-  "BFD_RELOC_NIOS2_TLS_LE16",
-  "BFD_RELOC_NIOS2_TLS_DTPMOD",
-  "BFD_RELOC_NIOS2_TLS_DTPREL",
-  "BFD_RELOC_NIOS2_TLS_TPREL",
-  "BFD_RELOC_NIOS2_COPY",
-  "BFD_RELOC_NIOS2_GLOB_DAT",
-  "BFD_RELOC_NIOS2_JUMP_SLOT",
-  "BFD_RELOC_NIOS2_RELATIVE",
-  "BFD_RELOC_NIOS2_GOTOFF",
-  "BFD_RELOC_NIOS2_CALL26_NOAT",
-  "BFD_RELOC_NIOS2_GOT_LO",
-  "BFD_RELOC_NIOS2_GOT_HA",
-  "BFD_RELOC_NIOS2_CALL_LO",
-  "BFD_RELOC_NIOS2_CALL_HA",
-  "BFD_RELOC_NIOS2_R2_S12",
-  "BFD_RELOC_NIOS2_R2_I10_1_PCREL",
-  "BFD_RELOC_NIOS2_R2_T1I7_1_PCREL",
-  "BFD_RELOC_NIOS2_R2_T1I7_2",
-  "BFD_RELOC_NIOS2_R2_T2I4",
-  "BFD_RELOC_NIOS2_R2_T2I4_1",
-  "BFD_RELOC_NIOS2_R2_T2I4_2",
-  "BFD_RELOC_NIOS2_R2_X1I7_2",
-  "BFD_RELOC_NIOS2_R2_X2L5",
-  "BFD_RELOC_NIOS2_R2_F1I5_2",
-  "BFD_RELOC_NIOS2_R2_L5I4X1",
-  "BFD_RELOC_NIOS2_R2_T1X1I6",
-  "BFD_RELOC_NIOS2_R2_T1X1I6_2",
   "BFD_RELOC_PRU_U16",
   "BFD_RELOC_PRU_U16_PMEMIMM",
   "BFD_RELOC_PRU_LDI32",

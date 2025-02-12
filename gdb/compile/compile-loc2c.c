@@ -29,9 +29,9 @@
 #include "compile.h"
 #include "block.h"
 #include "dwarf2/frame.h"
-#include "gdbsupport/gdb_vecs.h"
 #include "value.h"
 #include "gdbarch.h"
+#include "extract-store-integer.h"
 
 
 

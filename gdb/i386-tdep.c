@@ -866,7 +866,7 @@ i386_displaced_step_fixup (struct gdbarch *gdbarch,
 	  ULONGEST eip = (pc - insn_offset) & 0xffffffffUL;
 
 	  /* If we just stepped over a breakpoint insn, we don't backup
-	     the pc on purpose; this is to match behaviour without
+	     the pc on purpose; this is to match behavior without
 	     stepping.  */
 
 	  regcache_write_pc (regs, eip);
@@ -2139,16 +2139,16 @@ i386_frame_prev_register (const frame_info_ptr &this_frame, void **this_cache,
   return frame_unwind_got_register (this_frame, regnum, regnum);
 }
 
-static const struct frame_unwind i386_frame_unwind =
-{
+static const struct frame_unwind_legacy i386_frame_unwind (
   "i386 prologue",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   i386_frame_unwind_stop_reason,
   i386_frame_this_id,
   i386_frame_prev_register,
   NULL,
   default_frame_sniffer
-};
+);
 
 /* Normal frames, but in a function epilogue.  */
 
@@ -2294,27 +2294,27 @@ i386_epilogue_frame_prev_register (const frame_info_ptr &this_frame,
   return i386_frame_prev_register (this_frame, this_cache, regnum);
 }
 
-static const struct frame_unwind i386_epilogue_override_frame_unwind =
-{
+static const struct frame_unwind_legacy i386_epilogue_override_frame_unwind (
   "i386 epilogue override",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   i386_epilogue_frame_unwind_stop_reason,
   i386_epilogue_frame_this_id,
   i386_epilogue_frame_prev_register,
   NULL,
   i386_epilogue_override_frame_sniffer
-};
+);
 
-static const struct frame_unwind i386_epilogue_frame_unwind =
-{
+static const struct frame_unwind_legacy i386_epilogue_frame_unwind (
   "i386 epilogue",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   i386_epilogue_frame_unwind_stop_reason,
   i386_epilogue_frame_this_id,
   i386_epilogue_frame_prev_register,
   NULL,
   i386_epilogue_frame_sniffer
-};
+);
 
 
 /* Stack-based trampolines.  */
@@ -2387,16 +2387,16 @@ i386_stack_tramp_frame_sniffer (const struct frame_unwind *self,
     return 0;
 }
 
-static const struct frame_unwind i386_stack_tramp_frame_unwind =
-{
+static const struct frame_unwind_legacy i386_stack_tramp_frame_unwind (
   "i386 stack tramp",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   i386_epilogue_frame_unwind_stop_reason,
   i386_epilogue_frame_this_id,
   i386_epilogue_frame_prev_register,
   NULL,
   i386_stack_tramp_frame_sniffer
-};
+);
 
 /* Generate a bytecode expression to get the value of the saved PC.  */
 
@@ -2536,16 +2536,16 @@ i386_sigtramp_frame_sniffer (const struct frame_unwind *self,
   return 0;
 }
 
-static const struct frame_unwind i386_sigtramp_frame_unwind =
-{
+static const struct frame_unwind_legacy i386_sigtramp_frame_unwind (
   "i386 sigtramp",
   SIGTRAMP_FRAME,
+  FRAME_UNWIND_ARCH,
   i386_sigtramp_frame_unwind_stop_reason,
   i386_sigtramp_frame_this_id,
   i386_sigtramp_frame_prev_register,
   NULL,
   i386_sigtramp_frame_sniffer
-};
+);
 
 
 static CORE_ADDR
@@ -4816,6 +4816,50 @@ i386_record_vex (struct i386_record_s *ir, uint8_t vex_w, uint8_t vex_r,
 
   switch (opcode)
     {
+    case 0x10:	/* VMOVS[S|D] XMM, mem.  */
+		/* VMOVUP[S|D] XMM, mem.  */
+    case 0x28:	/* VMOVAP[S|D] XMM, mem.  */
+      /* Moving from memory region or XMM registers into an XMM register.  */
+      i386_record_modrm (ir);
+      record_full_arch_list_add_reg (ir->regcache,
+				     ir->regmap[X86_RECORD_XMM0_REGNUM]
+				     + ir->reg + vex_r * 8);
+      break;
+    case 0x11:	/* VMOVS[S|D] mem, XMM.  */
+		/* VMOVUP[S|D] mem, XMM.  */
+    case 0x29:	/* VMOVAP[S|D] mem, XMM.  */
+      /* Moving from memory region into an XMM register.  */
+      /* This can also be used for XMM -> XMM in some scenarios.  */
+      i386_record_modrm (ir);
+      if (ir->mod == 3)
+	{
+	  /* In this case the destination register is encoded differently
+	     to any other AVX instruction I've seen so far.  In this one,
+	     VEX.B is the most important bit of the destination.  */
+	  record_full_arch_list_add_reg (ir->regcache,
+					 ir->regmap[X86_RECORD_XMM0_REGNUM]
+					 + ir->rm + ir->rex_b * 8);
+	}
+      else
+	{
+	  /* Opcode 0x29 is trivial, the size of memory written is defined by
+	     VEX.L.  Opcode 0x11 can refer to vmovs[s|d] or vmovup[s|d]; they
+	     are differentiated by the most significant bit of VEX.pp, and the
+	     latter works exactly like 0x29, but the former encodes the size
+	     on VEX.pp itself.  */
+	  if (opcode == 0x11 && (ir->pp & 2) != 0)
+	    ir->ot = ir->pp;
+	  else
+	    ir->ot = 4 + ir->l;
+	  i386_record_lea_modrm (ir);
+	}
+      break;
+    case 0x14: /* VUNPCKL[PS|PD].  */
+    case 0x15: /* VUNPCKH [PS|PD].  */
+      i386_record_modrm (ir);
+      record_full_arch_list_add_reg (ir->regcache,
+				     tdep->ymm0_regnum + ir->reg + vex_r * 8);
+      break;
     case 0x6e:	/* VMOVD XMM, reg/mem  */
       /* This is moving from a regular register or memory region into an
 	 XMM register. */
@@ -4951,11 +4995,28 @@ i386_record_vex (struct i386_record_s *ir, uint8_t vex_w, uint8_t vex_r,
       }
       break;
 
+    case 0x74:	/* VPCMPEQB  */
+    case 0x75:	/* VPCMPEQB  */
+    case 0x76:	/* VPCMPEQB  */
+      {
+	i386_record_modrm (ir);
+	int reg_offset = ir->reg + vex_r * 8;
+	record_full_arch_list_add_reg (ir->regcache,
+				       tdep->ymm0_regnum + reg_offset);
+      }
+      break;
+
     case 0x78:	/* VPBROADCASTB  */
     case 0x79:	/* VPBROADCASTW  */
-    case 0x58:	/* VPBROADCASTD  */
-    case 0x59:	/* VPBROADCASTQ  */
+    case 0x58:	/* VPBROADCASTD and VADD[P|S][S|D]  */
+    case 0x59:	/* VPBROADCASTQ and VMUL[P|S][S|D]  */
+    case 0x5c:	/* VSUB[P|S][S|D]  */
+    case 0x5d:	/* VMIN[P|S][S|D]  */
+    case 0x5e:	/* VDIV[P|S][S|D]  */
+    case 0x5f:	/* VMAX[P|S][S|D]  */
       {
+	/* vpbroadcast and arithmethic operations are differentiated
+	   by map_select, but it doesn't change the recording mechanics.  */
 	i386_record_modrm (ir);
 	int reg_offset = ir->reg + vex_r * 8;
 	gdb_assert (tdep->num_ymm_regs > reg_offset);
@@ -4978,6 +5039,25 @@ i386_record_vex (struct i386_record_s *ir, uint8_t vex_w, uint8_t vex_r,
 	    record_full_arch_list_add_reg (ir->regcache,
 					   tdep->ymm0h_regnum + i);
 	  }
+	break;
+      }
+
+    case 0xd7:	/* VPMOVMSKB  */
+      {
+	i386_record_modrm (ir);
+	record_full_arch_list_add_reg (ir->regcache,
+				       ir->regmap[X86_RECORD_REAX_REGNUM
+						  + ir->reg + 8 * vex_r]);
+      }
+      break;
+
+    case 0xef:	/* VPXOR  */
+    case 0xeb:	/* VPOR   */
+      {
+	i386_record_modrm (ir);
+	int reg_offset = ir->reg + vex_r * 8;
+	record_full_arch_list_add_reg (ir->regcache,
+				       tdep->ymm0_regnum + reg_offset);
 	break;
       }
 

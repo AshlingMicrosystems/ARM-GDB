@@ -15,8 +15,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef COMMON_ARRAY_VIEW_H
-#define COMMON_ARRAY_VIEW_H
+#ifndef GDBSUPPORT_ARRAY_VIEW_H
+#define GDBSUPPORT_ARRAY_VIEW_H
 
 #include "traits.h"
 #include <algorithm>
@@ -294,6 +294,15 @@ make_array_view (U *array, size_t size) noexcept
   return {array, size};
 }
 
+/* Create an array view from an array.  */
+
+template <typename U, std::size_t Size>
+constexpr inline array_view<U>
+make_array_view (U (&array)[Size])
+{
+  return {array};
+}
+
 } /* namespace gdb */
 
-#endif
+#endif /* GDBSUPPORT_ARRAY_VIEW_H */

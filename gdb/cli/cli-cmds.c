@@ -215,7 +215,7 @@ error_no_arg (const char *why)
 static void
 info_command (const char *arg, int from_tty)
 {
-  help_list (infolist, "info ", all_commands, gdb_stdout);
+  help_list (infolist, "info", all_commands, gdb_stdout);
 }
 
 /* See cli/cli-cmds.h.  */
@@ -923,7 +923,7 @@ run_under_shell (const char *arg, int from_tty)
 
   if (pid != -1)
     {
-      int ret = gdb::handle_eintr (-1, ::waitpid, pid, &status, 0);
+      int ret = gdb::waitpid (pid, &status, 0);
       if (ret == -1)
 	perror_with_name ("Cannot get status of shell command");
     }
@@ -1551,17 +1551,19 @@ print_disassembly (struct gdbarch *gdbarch, const char *name,
 static void
 disassemble_current_function (gdb_disassembly_flags flags)
 {
-  frame_info_ptr frame;
-  struct gdbarch *gdbarch;
-  CORE_ADDR low, high, pc;
-  const char *name;
-  const struct block *block;
+  frame_info_ptr frame = get_selected_frame (_("No frame selected."));
+  struct gdbarch *gdbarch = get_frame_arch (frame);
+  CORE_ADDR pc = get_frame_address_in_block (frame);
 
-  frame = get_selected_frame (_("No frame selected."));
-  gdbarch = get_frame_arch (frame);
-  pc = get_frame_address_in_block (frame);
-  if (find_pc_partial_function (pc, &name, &low, &high, &block) == 0)
+  const general_symbol_info *gsi;
+  const struct block *block;
+  CORE_ADDR low, high;
+  if (find_pc_partial_function_sym (pc, &gsi, &low, &high, &block) == 0)
     error (_("No function contains program counter for selected frame."));
+
+  gdb_assert (gsi != nullptr);
+  const char *name = asm_demangle ? gsi->print_name () : gsi->linkage_name ();
+
 #if defined(TUI)
   /* NOTE: cagney/2003-02-13 The `tui_active' was previously
      `tui_version'.  */
@@ -2396,6 +2398,11 @@ value_from_setting (const setting &var, struct gdbarch *gdbarch)
 
 	return current_language->value_string (gdbarch, value, len);
       }
+    case var_color:
+      {
+	std::string s = var.get<ui_file_style::color> ().to_string ();
+	return current_language->value_string (gdbarch, s.c_str (), s.size ());
+      }
     default:
       gdb_assert_not_reached ("bad var_type");
     }
@@ -2443,6 +2450,7 @@ str_value_from_setting (const setting &var, struct gdbarch *gdbarch)
     case var_pinteger:
     case var_boolean:
     case var_auto_boolean:
+    case var_color:
       {
 	std::string cmd_val = get_setshow_command_value_string (var);
 

@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef DWARF2READ_H
-#define DWARF2READ_H
+#ifndef GDB_DWARF2_READ_H
+#define GDB_DWARF2_READ_H
 
 #include <queue>
 #include <unordered_map>
@@ -451,6 +451,10 @@ struct dwarf2_per_bfd
      .debug_info.  */
   void map_info_sections (struct objfile *objfile);
 
+  /* Set the 'index_table' member and then call start_reading on
+     it.  */
+  void start_reading (std::unique_ptr<dwarf_scanner_base> new_table);
+
 private:
   /* This function is mapped across the sections and remembers the
      offset and size of each of the debugging sections we are
@@ -655,6 +659,26 @@ struct type_unit_group_unshareable
   struct symtab **symtabs = nullptr;
 };
 
+struct per_cu_and_offset
+{
+  dwarf2_per_cu_data *per_cu;
+  sect_offset offset;
+
+  bool operator== (const per_cu_and_offset &other) const noexcept
+  {
+    return this->per_cu == other.per_cu && this->offset == other.offset;
+  }
+};
+
+struct per_cu_and_offset_hash
+{
+  std::uint64_t operator() (const per_cu_and_offset &key) const noexcept
+  {
+    return (std::hash<dwarf2_per_cu_data *> () (key.per_cu)
+	    + std::hash<sect_offset> () (key.offset));
+  }
+};
+
 /* Collection of data recorded per objfile.
    This hangs off of dwarf2_objfile_data_key.
 
@@ -729,10 +753,22 @@ struct dwarf2_per_objfile
      other objfiles backed by the same BFD.  */
   struct dwarf2_per_bfd *per_bfd;
 
-  /* Table mapping type DIEs to their struct type *.
-     This is nullptr if not allocated yet.
-     The mapping is done via (CU/TU + DIE offset) -> type.  */
-  htab_up die_type_hash;
+  /* A mapping of (CU "per_cu" pointer, DIE offset) to GDB type pointer.
+
+     We store these in a hash table separate from the DIEs, and preserve them
+     when the DIEs are flushed out of cache.
+
+     The CU "per_cu" pointer is needed because offset alone is not enough to
+     uniquely identify the type.  A file may have multiple .debug_types sections,
+     or the type may come from a DWO file.  Furthermore, while it's more logical
+     to use per_cu->section+offset, with Fission the section with the data is in
+     the DWO file but we don't know that section at the point we need it.
+     We have to use something in dwarf2_per_cu_data (or the pointer to it)
+     because we can enter the lookup routine, get_die_type_at_offset, from
+     outside this file, and thus won't necessarily have PER_CU->cu.
+     Fortunately, PER_CU is stable for the life of the objfile.  */
+  gdb::unordered_map<per_cu_and_offset, type *, per_cu_and_offset_hash>
+    die_type_hash;
 
   /* Table containing line_header indexed by offset and offset_in_dwz.  */
   htab_up line_header_hash;
@@ -899,21 +935,6 @@ extern bool dw2_expand_symtabs_matching_one
    gdb::function_view<expand_symtabs_exp_notify_ftype> expansion_notify,
    gdb::function_view<expand_symtabs_lang_matcher_ftype> lang_matcher);
 
-/* Helper for dw2_expand_symtabs_matching that works with a
-   mapped_index_base instead of the containing objfile.  This is split
-   to a separate function in order to be able to unit test the
-   name_components matching using a mock mapped_index_base.  For each
-   symbol name that matches, calls MATCH_CALLBACK, passing it the
-   symbol's index in the mapped_index_base symbol table.  */
-
-extern bool dw2_expand_symtabs_matching_symbol
-  (mapped_index_base &index,
-   const lookup_name_info &lookup_name_in,
-   gdb::function_view<expand_symtabs_symbol_matcher_ftype> symbol_matcher,
-   gdb::function_view<bool (offset_type)> match_callback,
-   dwarf2_per_objfile *per_objfile,
-   gdb::function_view<expand_symtabs_lang_matcher_ftype> lang_matcher);
-
 /* If FILE_MATCHER is non-NULL, set all the
    dwarf2_per_cu_quick_data::MARK of the current DWARF2_PER_OBJFILE
    that match FILE_MATCHER.  */
@@ -950,4 +971,4 @@ extern void create_all_units (dwarf2_per_objfile *per_objfile);
 
 extern htab_up create_quick_file_names_table (unsigned int nr_initial_entries);
 
-#endif /* DWARF2READ_H */
+#endif /* GDB_DWARF2_READ_H */

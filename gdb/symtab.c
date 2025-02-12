@@ -18,6 +18,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "dwarf2/call-site.h"
+#include "exceptions.h"
 #include "symtab.h"
 #include "event-top.h"
 #include "gdbtypes.h"
@@ -46,6 +47,7 @@
 #include "fnmatch.h"
 #include "hashtab.h"
 #include "typeprint.h"
+#include "exceptions.h"
 
 #include "gdbsupport/gdb_obstack.h"
 #include "block.h"
@@ -73,6 +75,7 @@
 #include "gdbsupport/pathstuff.h"
 #include "gdbsupport/common-utils.h"
 #include <optional>
+#include <unordered_set>
 
 /* Forward declarations for local functions.  */
 
@@ -120,6 +123,41 @@ struct main_info
 /* Program space key for finding name and language of "main".  */
 
 static const registry<program_space>::key<main_info> main_progspace_key;
+
+/* Symbol lookup is not reentrant (though this is not an intrinsic
+   restriction).  Keep track of whether a symbol lookup is active, to be able
+   to detect reentrancy.  */
+static bool in_symbol_lookup;
+
+/* Struct to mark that a symbol lookup is active for the duration of its
+   lifetime.  */
+
+struct enter_symbol_lookup
+{
+  enter_symbol_lookup ()
+  {
+    /* Ensure that the current language has been set.  Normally the
+       language is set lazily.  However, when performing a symbol lookup,
+       this could result in a recursive call into the lookup code in some
+       cases.  Set it now to ensure that this does not happen.  */
+    get_current_language ();
+
+    /* Detect symbol lookup reentrance.  */
+    gdb_assert (!in_symbol_lookup);
+
+    in_symbol_lookup = true;
+  }
+
+  ~enter_symbol_lookup ()
+  {
+    /* Sanity check.  */
+    gdb_assert (in_symbol_lookup);
+
+    in_symbol_lookup = false;
+  }
+
+  DISABLE_COPY_AND_ASSIGN (enter_symbol_lookup);
+};
 
 /* The default symbol cache size.
    There is no extra cpu cost for large N (except when flushing the cache,
@@ -400,38 +438,34 @@ compunit_symtab::find_call_site (CORE_ADDR pc) const
     return nullptr;
 
   CORE_ADDR delta = this->objfile ()->text_section_offset ();
-  unrelocated_addr unrelocated_pc = (unrelocated_addr) (pc - delta);
 
-  struct call_site call_site_local (unrelocated_pc, nullptr, nullptr);
-  void **slot
-    = htab_find_slot (m_call_site_htab, &call_site_local, NO_INSERT);
-  if (slot != nullptr)
-    return (call_site *) *slot;
+  if (auto it = m_call_site_htab->find (static_cast<unrelocated_addr> (pc - delta));
+      it != m_call_site_htab->end ())
+    return *it;
 
   /* See if the arch knows another PC we should try.  On some
      platforms, GCC emits a DWARF call site that is offset from the
      actual return location.  */
   struct gdbarch *arch = objfile ()->arch ();
   CORE_ADDR new_pc = gdbarch_update_call_site_pc (arch, pc);
+
   if (pc == new_pc)
     return nullptr;
 
-  unrelocated_pc = (unrelocated_addr) (new_pc - delta);
-  call_site new_call_site_local (unrelocated_pc, nullptr, nullptr);
-  slot = htab_find_slot (m_call_site_htab, &new_call_site_local, NO_INSERT);
-  if (slot == nullptr)
-    return nullptr;
+  if (auto it = m_call_site_htab->find (static_cast<unrelocated_addr> (new_pc - delta));
+      it != m_call_site_htab->end ())
+    return *it;
 
-  return (call_site *) *slot;
+  return nullptr;
 }
 
 /* See symtab.h.  */
 
 void
-compunit_symtab::set_call_site_htab (htab_up call_site_htab)
+compunit_symtab::set_call_site_htab (call_site_htab_t &&call_site_htab)
 {
   gdb_assert (m_call_site_htab == nullptr);
-  m_call_site_htab = call_site_htab.release ();
+  m_call_site_htab = new call_site_htab_t (std::move (call_site_htab));
 }
 
 /* See symtab.h.  */
@@ -500,8 +534,7 @@ void
 compunit_symtab::finalize ()
 {
   this->forget_cached_source_info ();
-  if (m_call_site_htab != nullptr)
-    htab_delete (m_call_site_htab);
+  delete m_call_site_htab;
 }
 
 /* The relocated address of the minimal symbol, using the section
@@ -588,40 +621,6 @@ compare_filenames_for_search (const char *filename, const char *search_name)
 	      && IS_DIR_SEPARATOR (filename[len - search_len - 1]))
 	  || (HAS_DRIVE_SPEC (filename)
 	      && STRIP_DRIVE_SPEC (filename) == &filename[len - search_len]));
-}
-
-/* Same as compare_filenames_for_search, but for glob-style patterns.
-   Heads up on the order of the arguments.  They match the order of
-   compare_filenames_for_search, but it's the opposite of the order of
-   arguments to gdb_filename_fnmatch.  */
-
-bool
-compare_glob_filenames_for_search (const char *filename,
-				   const char *search_name)
-{
-  /* We rely on the property of glob-style patterns with FNM_FILE_NAME that
-     all /s have to be explicitly specified.  */
-  int file_path_elements = count_path_elements (filename);
-  int search_path_elements = count_path_elements (search_name);
-
-  if (search_path_elements > file_path_elements)
-    return false;
-
-  if (IS_ABSOLUTE_PATH (search_name))
-    {
-      return (search_path_elements == file_path_elements
-	      && gdb_filename_fnmatch (search_name, filename,
-				       FNM_FILE_NAME | FNM_NOESCAPE) == 0);
-    }
-
-  {
-    const char *file_to_compare
-      = strip_leading_path_elements (filename,
-				     file_path_elements - search_path_elements);
-
-    return gdb_filename_fnmatch (search_name, file_to_compare,
-				 FNM_FILE_NAME | FNM_NOESCAPE) == 0;
-  }
 }
 
 /* Check for a symtab of a specific name by searching some symtabs.
@@ -2295,6 +2294,8 @@ lookup_symbol_in_block (const char *name, symbol_name_match_type match_type,
 			const struct block *block,
 			const domain_search_flags domain)
 {
+  enter_symbol_lookup tmp;
+
   struct symbol *sym;
 
   if (symbol_lookup_debug)
@@ -2330,6 +2331,8 @@ lookup_global_symbol_from_objfile (struct objfile *main_objfile,
 				   const char *name,
 				   const domain_search_flags domain)
 {
+  enter_symbol_lookup tmp;
+
   gdb_assert (block_index == GLOBAL_BLOCK || block_index == STATIC_BLOCK);
 
   for (objfile *objfile : main_objfile->separate_debug_objfiles ())
@@ -2654,6 +2657,8 @@ lookup_global_or_static_symbol (const char *name,
 	return {};
       return result;
     }
+
+  enter_symbol_lookup tmp;
 
   /* Do a global search (of global blocks, heh).  */
   if (result.symbol == NULL)
@@ -4258,7 +4263,7 @@ find_epilogue_using_linetable (CORE_ADDR func_addr)
       /* Move to the last linetable entry of the current function.  */
       if (it == &linetable->item[0])
 	{
-	  /* Doing it-- would introduce undefined behaviour, avoid it by
+	  /* Doing it-- would introduce undefined behavior, avoid it by
 	     explicitly handling this case.  */
 	  return {};
 	}
@@ -4292,7 +4297,7 @@ find_epilogue_using_linetable (CORE_ADDR func_addr)
 	  if (it == &linetable->item[0])
 	    {
 	      /* No more entries in the current function.
-		 Doing it-- would introduce undefined behaviour, avoid it by
+		 Doing it-- would introduce undefined behavior, avoid it by
 		 explicitly handling this case.  */
 	      break;
 	    }
@@ -5591,7 +5596,6 @@ info_main_command (const char *args, int from_tty)
 static void
 rbreak_command (const char *regexp, int from_tty)
 {
-  std::string string;
   gdb::unique_xmalloc_ptr<char> file_name;
 
   if (regexp != nullptr)
@@ -5619,29 +5623,62 @@ rbreak_command (const char *regexp, int from_tty)
     spec.add_filename (std::move (file_name));
   std::vector<symbol_search> symbols = spec.search ();
 
+  std::unordered_set<std::string> seen_names;
   scoped_rbreak_breakpoints finalize;
+  int err_count = 0;
+
   for (const symbol_search &p : symbols)
     {
-      if (p.msymbol.minsym == NULL)
+      std::string name;
+      if (p.msymbol.minsym == nullptr)
 	{
-	  struct symtab *symtab = p.symbol->symtab ();
-	  const char *fullname = symtab_to_fullname (symtab);
-
-	  string = string_printf ("%s:'%s'", fullname,
-				  p.symbol->linkage_name ());
-	  break_command (&string[0], from_tty);
-	  print_symbol_info (p.symbol, p.block, nullptr);
+	  if (file_name != nullptr)
+	    {
+	      struct symtab *symtab = p.symbol->symtab ();
+	      const char *fullname = symtab_to_fullname (symtab);
+	      name = string_printf ("%s:'%s'", fullname,
+				    p.symbol->linkage_name ());
+	    }
+	  else
+	    name = p.symbol->linkage_name ();
 	}
       else
-	{
-	  string = string_printf ("'%s'",
-				  p.msymbol.minsym->linkage_name ());
+	name = p.msymbol.minsym->linkage_name ();
 
-	  break_command (&string[0], from_tty);
-	  gdb_printf ("<function, no debug info> %s;\n",
-		      p.msymbol.minsym->print_name ());
+      if (!seen_names.insert (name).second)
+	continue;
+
+      try
+	{
+	  break_command (name.c_str (), from_tty);
 	}
+      catch (const gdb_exception_error &ex)
+	{
+	  exception_print (gdb_stderr, ex);
+	  ++err_count;
+	  continue;
+	}
+
+      if (p.msymbol.minsym == nullptr)
+	print_symbol_info (p.symbol, p.block, nullptr);
+      else
+	gdb_printf ("<function, no debug info> %s;\n", name.c_str ());
     }
+
+  int first_bp = finalize.first_breakpoint ();
+  int last_bp = finalize.last_breakpoint ();
+
+  if (last_bp == -1)
+    gdb_printf (_("No breakpoints made.\n"));
+  else if (first_bp == last_bp)
+    gdb_printf (_("Successfully created breakpoint %d.\n"), first_bp);
+  else
+    gdb_printf (_("Successfully created breakpoints %d-%d.\n"),
+		first_bp, last_bp);
+
+  if (err_count > 0)
+    gdb_printf (_("%d breakpoints failed due to errors, see above.\n"),
+		err_count);
 }
 
 
@@ -6780,7 +6817,7 @@ symbol::get_maybe_copied_address () const
   const char *linkage_name = this->linkage_name ();
   bound_minimal_symbol minsym
     = lookup_minimal_symbol_linkage (this->objfile ()->pspace (), linkage_name,
-				     false);
+				     false, false);
   if (minsym.minsym != nullptr)
     return minsym.value_address ();
 
@@ -6797,7 +6834,8 @@ minimal_symbol::get_maybe_copied_address (objfile *objf) const
 
   const char *linkage_name = this->linkage_name ();
   bound_minimal_symbol found
-    = lookup_minimal_symbol_linkage (objf->pspace (), linkage_name, true);
+    = lookup_minimal_symbol_linkage (objf->pspace (), linkage_name,
+				     false, true);
   if (found.minsym != nullptr)
     return found.value_address ();
 

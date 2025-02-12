@@ -4209,7 +4209,7 @@ call executes, the new target restarts.  To restart the parent
 process, use the @code{file} command with the parent executable name
 as its argument.  By default, after an @code{exec} call executes,
 @value{GDBN} discards the symbols of the previous executable image.
-You can change this behaviour with the @w{@code{set follow-exec-mode}}
+You can change this behavior with the @w{@code{set follow-exec-mode}}
 command.
 
 @table @code
@@ -4322,10 +4322,26 @@ listed:
 
 @table @code
 @item Checkpoint ID
+@item Active state indicator
 @item Process ID
 @item Code Address
 @item Source line, or label
 @end table
+
+Checkpoint IDs will be displayed as either a non-negative integer or
+in the form @var{i}.@var{n}, where @var{i} is the inferior number, a
+positive integer, as shown by the command @code{info inferiors}, and
+@var{n}, a non-negative integer, is the checkpoint number for that
+inferior.  The single non-negative integer form is used when
+there is only one inferior.  The @var{i}.@var{n} form is used when
+there are multiple inferiors.
+
+The active state indicator is a single letter, either @samp{y} or
+@samp{n}, indicating yes or no.  Only one checkpoint per inferior may
+be active at once.  The active checkpoint in the current inferior is
+also shown by a @samp{*} at the start of the line.  Checkpoints whose
+active state is @samp{n} can be switched to using the @code{restart}
+command or deleted using the @code{delete checkpoint} command.
 
 @kindex restart @var{checkpoint-id}
 @item restart @var{checkpoint-id}
@@ -4333,7 +4349,9 @@ Restore the program state that was saved as checkpoint number
 @var{checkpoint-id}.  All program variables, registers, stack frames
 etc.@:  will be returned to the values that they had when the checkpoint
 was saved.  In essence, gdb will ``wind back the clock'' to the point
-in time when the checkpoint was saved.
+in time when the checkpoint was saved.  The checkpoint number
+@var{checkpoint-id} is specified in the same form as that output by the
+@code{info checkpoints} command.
 
 Note that breakpoints, @value{GDBN} variables, command history etc.
 are not affected by restoring a checkpoint.  In general, a checkpoint
@@ -4977,7 +4995,7 @@ breakpoints set by commands like @code{next} and @code{finish}.  For
 breakpoints set with @code{hbreak}, @value{GDBN} will always use hardware
 breakpoints.
 
-You can control this automatic behaviour with the following commands:
+You can control this automatic behavior with the following commands:
 
 @kindex set breakpoint auto-hw
 @kindex show breakpoint auto-hw
@@ -4998,7 +5016,7 @@ at the breakpoint address with a special instruction, which, when
 executed, given control to the debugger.  By default, the program
 code is so modified only when the program is resumed.  As soon as
 the program stops, @value{GDBN} restores the original instructions.  This
-behaviour guards against leaving breakpoints inserted in the
+behavior guards against leaving breakpoints inserted in the
 target should gdb abrubptly disconnect.  However, with slow remote
 targets, inserting and removing breakpoint can reduce the performance.
 This behavior can be controlled with the following commands::
@@ -6737,7 +6755,9 @@ Functions in @var{file} will be skipped over when stepping.
 @itemx -gfi @var{file-glob-pattern}
 @cindex skipping over files via glob-style patterns
 Functions in files matching @var{file-glob-pattern} will be skipped
-over when stepping.
+over when stepping.  The directory separator character @file{/} is treated as a
+regular character, so it can be matched by wildcard characters @file{*} and
+@file{?}.
 
 @smallexample
 (@value{GDBP}) skip -gfi utils/*.c
@@ -6881,6 +6901,34 @@ fatal so it can carry out the purpose of the interrupt: to kill the program.
 @value{GDBN} has the ability to detect any occurrence of a signal in your
 program.  You can tell @value{GDBN} in advance what to do for each kind of
 signal.
+
+When specifying a signal by number, @value{GDBN} translates the number
+to the target platform according to the corresponding signal name.
+For example, @value{GDBN} always treats signal 1 as @code{SIGHUP}.
+So, when specifying @samp{1} as a signal, @value{GDBN} will translate
+this to the target's @code{SIGHUP}, whatever that might be.
+
+Numbers may only be used for signals 1 through 15.  @value{GDBN} uses
+this mapping:
+
+@multitable {Number} {SIGTERM}
+@headitem Number @tab Name
+@item 1 @tab SIGHUP
+@item 2 @tab SIGINT
+@item 3 @tab SIGQUIT
+@item 4 @tab SIGILL
+@item 5 @tab SIGTRAP
+@item 6 @tab SIGABRT
+@item 7 @tab SIGEMT
+@item 8 @tab SIGFPE
+@item 9 @tab SIGKILL
+@item 10 @tab SIGBUS
+@item 11 @tab SIGSEGV
+@item 12 @tab SIGSYS
+@item 13 @tab SIGPIPE
+@item 14 @tab SIGALRM
+@item 15 @tab SIGTERM
+@end multitable
 
 @cindex handling signals
 Normally, @value{GDBN} is set up to let the non-erroneous signals like
@@ -7759,7 +7807,7 @@ previous instruction; otherwise, it will work in record mode, if the
 platform supports reverse execution, or stop if not.
 
 Currently, process record and replay is supported on ARM, Aarch64,
-Moxie, PowerPC, PowerPC64, S/390, and x86 (i386/amd64) running
+LoongArch, Moxie, PowerPC, PowerPC64, S/390, and x86 (i386/amd64) running
 GNU/Linux.  Process record and replay can be used both when native
 debugging, and when remote debugging via @code{gdbserver}.
 
@@ -8177,7 +8225,7 @@ are printed in execution order.
 It can also print mixed source+disassembly if you specify the the
 @code{/m} or @code{/s} modifier, and print the raw instructions in hex
 as well as in symbolic form by specifying the @code{/r} or @code{/b}
-modifier.  The behaviour of the @code{/m}, @code{/s}, @code{/r}, and
+modifier.  The behavior of the @code{/m}, @code{/s}, @code{/r}, and
 @code{/b} modifiers are the same as for the @kbd{disassemble} command
 (@pxref{disassemble,,@kbd{disassemble}}).
 
@@ -12979,6 +13027,20 @@ and @code{$_shell_exitsignal} according to the exit status of the last
 launched command.  These variables are set and used similarly to
 the variables @code{$_exitcode} and @code{$_exitsignal}.
 
+@item $_colorsupport
+@vindex $_colorsupport@r{, convenience variable}
+@cindex color space
+Comma-separated list of @dfn{color space} names supported by terminal.  Names
+could be any of @samp{monochrome}, @samp{ansi_8color}, @samp{aixterm_16color},
+@samp{xterm_256color}, @samp{rgb_24bit}.  E.g., for plain linux terminal the
+value could be @samp{monochrome,ansi_8color} and for terminal with truecolor
+support it could be
+@samp{monochrome,ansi_8color,aixterm_16color,xterm_256color,rgb_24bit}.
+@samp{rgb_24bit} availability is determined by the @env{COLORTERM} environment
+variable which may be @samp{truecolor} or @samp{24bit}. Other color spaces are
+determined by the "Co" termcap which in turn depends on the @env{TERM}
+environment variable.
+
 @end table
 
 @node Convenience Funs
@@ -13805,7 +13867,7 @@ Disable @value{GDBN} from caching target memory.  This is the default.
 @value{GDBN} can be instructed to refuse accesses to memory that is
 not explicitly described.  This can be useful if accessing such
 regions has undesired effects for a specific target, or to provide
-better error checking.  The following commands control this behaviour.
+better error checking.  The following commands control this behavior.
 
 @table @code
 @kindex set mem inaccessible-by-default
@@ -17593,7 +17655,7 @@ Because of a limitation in @file{libdecnumber}, the library used by @value{GDBN}
 to manipulate decimal floating point numbers, it is not possible to convert
 (using a cast, for example) integers wider than 32-bit to decimal float.
 
-In addition, in order to imitate @value{GDBN}'s behaviour with binary floating
+In addition, in order to imitate @value{GDBN}'s behavior with binary floating
 point computations, error checking in decimal float operations ignores
 underflow, overflow and divide by zero exceptions.
 
@@ -21120,7 +21182,7 @@ still ongoing, then @value{GDBN} will interrupt the program.
 
 If a function called from @value{GDBN} is interrupted by a timeout,
 then by default the inferior is left in the frame where the timeout
-occurred, this behaviour can be adjusted with @samp{set
+occurred, this behavior can be adjusted with @samp{set
 unwind-on-timeout} (@pxref{set unwind-on-timeout}).
 
 For targets that don't support asynchronous execution
@@ -22914,16 +22976,48 @@ The DWARF specification documents an optional index section called
 section.  However, in order to work with @value{GDBN}, some extensions
 were necessary.
 
-@value{GDBN} uses the augmentation string @samp{GDB2}.  Earlier
-versions used the string @samp{GDB}, but these versions of the index
-are no longer supported.
+@value{GDBN} uses an augmentation string to specify which extensions
+are in use and to allow support of backwards-incompatible changes in
+this functionality.  The augmentation string has the form
+@samp{GDB@var{n}}, where @var{n} is an integral version number of the
+extensions, which is incremented when the extensions are added or
+modified.  The smallest @var{n} is 2; earlier versions of
+@value{GDBN} used just @samp{GDB} with no version number, but these
+versions of the index are no longer supported.
+
+Here is a list of augmentation string versions along with the changes
+introduced with each version, compared to the previous version.
+
+@table @samp
+
+@item GDB2
+Specifies the use of attributes @code{DW_IDX_GNU_internal},
+@code{DW_IDX_GNU_main}, @code{DW_IDX_GNU_language} and
+@code{DW_IDX_GNU_linkage_name}, described below.
+
+@item GDB3
+Changes the semantic of the @code{DW_IDX_parent} attribute.
+With @samp{GDB2}, @code{DW_IDX_parent} provided an offset into the name
+table.  With @samp{GDB3}, it now provides an offset to the index entry
+of the parent, relative to the start of the entry pool region.
+
+@end table
+
+@value{GDBN} produces indexes with the augmentation string @samp{GDB3}.
+
+@value{GDBN} can read indexes with augmentation strings @samp{GDB2} or
+@samp{GDB3}.  @value{GDBN} does not support reading indexes with any
+other augmentation strings.
 
 @value{GDBN} does not use the specified hash table.  Therefore,
 because this hash table is optional, @value{GDBN} also does not write
 it.
 
-@value{GDBN} also generates and uses some extra index attributes:
+@value{GDBN} generates and uses the following non-standard index
+attributes:
+
 @table @code
+
 @item DW_IDX_GNU_internal
 This has the value @samp{0x2000}.  It is a flag that, when set,
 indicates that the associated entry has @code{static} linkage.
@@ -22933,13 +23027,14 @@ This has the value @samp{0x2002}.  It is a flag that, when set,
 indicates that the associated entry is the program's @code{main}.
 
 @item DW_IDX_GNU_language
-This has the value @samp{0x2003}.  It is @samp{DW_LANG_} constant,
+This has the value @samp{0x2003}.  It is a @samp{DW_LANG_} constant,
 indicating the language of the associated entry.
 
 @item DW_IDX_GNU_linkage_name
 This has the value @samp{0x2004}.  It is a flag that, when set,
 indicates that the associated entry is a linkage name, and not a
 source name.
+
 @end table
 
 @node Symbol Errors
@@ -24140,21 +24235,13 @@ of a multi-process mode debug session.
 @subsection Tracepoints support in @code{gdbserver}
 @cindex tracepoints support in @code{gdbserver}
 
-On some targets, @code{gdbserver} supports tracepoints, fast
-tracepoints and static tracepoints.
+On some targets, @code{gdbserver} supports tracepoints and fast
+tracepoints.
 
-For fast or static tracepoints to work, a special library called the
+For fast tracepoints to work, a special library called the
 @dfn{in-process agent} (IPA), must be loaded in the inferior process.
 This library is built and distributed as an integral part of
-@code{gdbserver}.  In addition, support for static tracepoints
-requires building the in-process agent library with static tracepoints
-support.  At present, the UST (LTTng Userspace Tracer,
-@url{http://lttng.org/ust}) tracing engine is supported.  This support
-is automatically available if UST development headers are found in the
-standard include path when @code{gdbserver} is built, or if
-@code{gdbserver} was explicitly configured using @option{--with-ust}
-to point at such headers.  You can explicitly disable the support
-using @option{--with-ust=no}.
+@code{gdbserver}.
 
 There are several ways to load the in-process agent in your program:
 
@@ -26426,10 +26513,10 @@ all uses of @value{GDBN} with the architecture, both native and cross.
 * MIPS::
 * HPPA::               HP PA architecture
 * PowerPC::
-* Nios II::
 * Sparc64::
 * S12Z::
 * AMD GPU::            @acronym{AMD GPU} architectures
+* RISC-V::
 @end menu
 
 @node AArch64
@@ -27015,25 +27102,6 @@ by joining the even/odd register pairs @code{f0} and @code{f1} for @code{$dl0},
 For POWER7 processors, @value{GDBN} provides a set of pseudo-registers, the 64-bit
 wide Extended Floating Point Registers (@samp{f32} through @samp{f63}).
 
-@node Nios II
-@subsection Nios II
-@cindex Nios II architecture
-
-When @value{GDBN} is debugging the Nios II architecture,
-it provides the following special commands:
-
-@table @code
-
-@item set debug nios2
-@kindex set debug nios2
-This command turns on and off debugging messages for the Nios II
-target code in @value{GDBN}.
-
-@item show debug nios2
-@kindex show debug nios2
-Show the current setting of Nios II debugging messages.
-@end table
-
 @node Sparc64
 @subsection Sparc64
 @cindex Sparc64 support
@@ -27411,6 +27479,29 @@ available for all architectures even for wavefronts created when @value{GDBN}
 was not attached.
 
 @end enumerate
+
+
+@node RISC-V
+@subsection RISC-V
+@cindex RISC-V support
+
+When @value{GDBN} is debugging a RISC-V architecture, it provides the
+following special commands:
+
+@table @code
+@item set riscv numeric-register-names @r{[}on@r{|}off@r{]}
+@kindex set riscv numeric-register-names
+This command controls whether @value{GDBN} displays RISC-V register names using
+their numeric or abi names.  When @samp{on}, @value{GDBN} displays registers
+by their numeric names (e.g. @samp{x1}).  When @samp{off}, @value{GDBN}
+displays registers by their abi names (e.g. @samp{ra}).  The default is
+@samp{off}.
+
+@item show riscv numeric-register-names
+Show whether @value{GDBN} will refer to registers by their numeric names.
+
+@end table
+
 
 @node Controlling GDB
 @chapter Controlling @value{GDBN}
@@ -27861,16 +27952,32 @@ For example, the style of file names can be controlled using the
 
 @table @code
 @item set style filename background @var{color}
-Set the background to @var{color}.  Valid colors are @samp{none}
-(meaning the terminal's default color), @samp{black}, @samp{red},
-@samp{green}, @samp{yellow}, @samp{blue}, @samp{magenta}, @samp{cyan},
-and@samp{white}.
+Set the background to @var{color}.  @var{color} can be @samp{none}
+(meaning the terminal's default color), a name of one of the eight standard
+colors of ISO/IEC 6429, index from 0 to 255 into terminal's color
+palette or a hexadecimal RGB triplet in @samp{#RRGGBB} format for
+24-bit TrueColor.
+
+Valid color names are @samp{black}, @samp{red}, @samp{green},
+@samp{yellow}, @samp{blue}, @samp{magenta}, @samp{cyan}, and
+@samp{white}.
+
+Integers 0 to 7 are the synonyms for the standard colors.  Integers 8-15 are
+used for the so-called bright colors from the aixterm extended 16-color
+palette.  Integers 16-255 are the indexes into xterm extended 256-color palette
+(usually 6x6x6 cube plus gray ramp).  In general, 256-color palette is terminal
+dependent and sometimes can be changed with OSC 4 sequences, e.g.
+"\033]4;1;rgb:00/FF/00\033\\". A hexadecimal 24-bit TrueColor is specified in
+the format @samp{#RRGGBB} where RR, GG and BB are the 2-digit hexadecimal
+integers specifiing the intensity of the red, green and blue color components,
+respectively.
+
+It is the responsibility of the user to verify that the terminal supports
+the specified colors.
 
 @item set style filename foreground @var{color}
-Set the foreground to @var{color}.  Valid colors are @samp{none}
-(meaning the terminal's default color), @samp{black}, @samp{red},
-@samp{green}, @samp{yellow}, @samp{blue}, @samp{magenta}, @samp{cyan},
-and@samp{white}.
+Set the foreground to @var{color}.  @var{color} can be given in the same ways
+as for the background.
 
 @item set style filename intensity @var{value}
 Set the intensity to @var{value}.  Valid intensities are @samp{normal}
@@ -27884,6 +27991,10 @@ their characteristics and the visual aspect of each style.
 
 The style-able objects are:
 @table @code
+@item command
+Control the styling of any @value{GDBN} commands that are displayed by
+@value{GDBN}.  By default, this style's intensity is bold.
+
 @item filename
 Control the styling of file names and URLs.  By default, this style's
 foreground color is green.
@@ -27931,10 +28042,9 @@ Files}).
 @item title
 Control the styling of titles.  These are managed with the
 @code{set style title} family of commands.  By default, this style's
-intensity is bold.  Commands are using the title style to improve
-the readability of large output.  For example, the commands
-@command{apropos} and @command{help} are using the title style
-for the command names.
+intensity is bold.  The title style is used when displaying the header
+line of a list, for example the first line of the output of
+@code{info breakpoints} (@pxref{Set Breaks}).
 
 @item highlight
 Control the styling of highlightings.  These are managed with the
@@ -30296,7 +30406,7 @@ There are some things to be aware of, however.
 @subsection Python comes first
 
 Python was @value{GDBN}'s first extension language, and to avoid breaking
-existing behaviour Python comes first.  This is generally solved by the
+existing behavior Python comes first.  This is generally solved by the
 ``first one wins'' principle.  @value{GDBN} maintains a list of enabled
 extension languages, and when it makes a call to an extension language,
 (say to pretty-print a value), it tries each in turn until an extension
@@ -31415,7 +31525,7 @@ if the selected thread in @value{GDBN} is supposed to be identical to the
 thread the frontend wants to operate on.  However, getting this
 optimization right can be tricky.  In particular, if the frontend
 sends several commands to @value{GDBN}, and one of the commands changes the
-selected thread, then the behaviour of subsequent commands will
+selected thread, then the behavior of subsequent commands will
 change.  So, a frontend should either wait for response from such
 problematic commands, or explicitly add @code{-thread-select} for
 all subsequent commands.  No frontend is known to do this exactly
@@ -31782,7 +31892,7 @@ details about the various output records.
 @cindex @sc{gdb/mi}, compatibility with CLI
 
 For the developers convenience CLI commands can be entered directly,
-but there may be some unexpected behaviour.  For example, commands
+but there may be some unexpected behavior.  For example, commands
 that query the user will behave as if the user replied yes, breakpoint
 command lists are not executed and some CLI commands, such as
 @code{if}, @code{when} and @code{define}, prompt for further input with
@@ -31961,7 +32071,7 @@ values.
 @item "^running"
 This result record is equivalent to @samp{^done}.  Historically, it
 was output instead of @samp{^done} if the command has resumed the
-target.  This behaviour is maintained for backward compatibility, but
+target.  This behavior is maintained for backward compatibility, but
 all frontends should treat @samp{^done} and @samp{^running}
 identically and rely on the @samp{*running} output record to determine
 which threads are resumed.
@@ -32176,12 +32286,22 @@ to this library.
 
 @item =library-unloaded,...
 Reports that a library was unloaded by the program.  This notification
-has 3 fields---@var{id}, @var{target-name} and @var{host-name} with
-the same meaning as for the @code{=library-loaded} notification.
+has the following fields---@var{id}, @var{target-name},
+@var{host-name} and @var{ranges} with the same meaning as for the
+@code{=library-loaded} notification.
+
+It is possible that a library can appear multiple times in an
+inferior's library list, but the library is only mapped once into the
+inferior's address space.  When this happens, and one copy of the
+library is unloaded, but there are remaining copies, the
+@var{still-in-use} field will be @samp{true}.  In all other
+situations, the @var{still-in-use} field will have the value
+@samp{false}.
+
 The @var{thread-group} field, if present, specifies the id of the
-thread group in whose context the library was unloaded.  If the field is
-absent, it means the library was unloaded in the context of all present
-thread groups.
+thread group in whose context the library was unloaded.  If the field
+is absent, it means the library was unloaded in the context of all
+present thread groups.
 
 @item =traceframe-changed,num=@var{tfnum},tracepoint=@var{tpnum}
 @itemx =traceframe-changed,end
@@ -40047,6 +40167,10 @@ reporting an error.  A new JIT reader can be loaded by first unloading
 the current one using @code{jit-reader-unload} and then invoking
 @code{jit-reader-load}.
 
+@item show jit-reader-directory
+This command will show the directory that is used by
+@code{jit-reader-load} when a relative file name is specified.
+
 @item jit-reader-unload
 Unload the currently loaded JIT reader.
 
@@ -41585,13 +41709,13 @@ only if non-stop mode is active (@pxref{Non-Stop Mode}) and the target
 architecture supports displaced stepping.
 @end table
 
-@kindex maint check-psymtabs
-@item maint check-psymtabs
+@kindex maint check psymtabs
+@item maint check psymtabs
 Check the consistency of currently expanded psymtabs versus symtabs.
 Use this to check, for example, whether a symbol is in one but not the other.
 
-@kindex maint check-symtabs
-@item maint check-symtabs
+@kindex maint check symtabs
+@item maint check symtabs
 Check the consistency of currently expanded symtabs.
 
 @kindex maint expand-symtabs
@@ -41698,7 +41822,7 @@ in @value{GDBN} downloading larger amounts of data.
 When @value{GDBN} reports an internal problem (error or warning) it
 gives the user the opportunity to both quit @value{GDBN} and create a
 core file of the current @value{GDBN} session.  These commands let you
-override the default behaviour for each particular @var{action},
+override the default behavior for each particular @var{action},
 described in the table below.
 
 @table @samp
@@ -42226,34 +42350,46 @@ On hosts without threading, or where worker threads have been disabled
 at runtime, this setting has no effect, as DWARF reading is always
 done on the main thread, and is therefore always synchronous.
 
-@kindex maint set dwarf unwinders
-@kindex maint show dwarf unwinders
-@item maint set dwarf unwinders
-@itemx maint show dwarf unwinders
-Control use of the DWARF frame unwinders.
-
-@cindex DWARF frame unwinders
-Many targets that support DWARF debugging use @value{GDBN}'s DWARF
-frame unwinders to build the backtrace.  Many of these targets will
-also have a second mechanism for building the backtrace for use in
-cases where DWARF information is not available, this second mechanism
-is often an analysis of a function's prologue.
-
-In order to extend testing coverage of the second level stack
-unwinding mechanisms it is helpful to be able to disable the DWARF
-stack unwinders, this can be done with this switch.
-
-In normal use of @value{GDBN} disabling the DWARF unwinders is not
-advisable, there are cases that are better handled through DWARF than
-prologue analysis, and the debug experience is likely to be better
-with the DWARF frame unwinders enabled.
-
-If DWARF frame unwinders are not supported for a particular target
-architecture, then enabling this flag does not cause them to be used.
-
 @kindex maint info frame-unwinders
 @item maint info frame-unwinders
-List the frame unwinders currently in effect, starting with the highest priority.
+List the frame unwinders currently in effect, starting with the highest
+priority.  This also lists the unwinder class, which is mostly defined by
+which area of @value{GDBN} uses it.  The currently available classes are:
+
+@table @samp
+@item GDB
+Internal unwinders, added by @value{GDBN} core.
+@item EXTENSION
+Unwinders added by extension languages.
+@item DEBUGINFO
+Unwinders installed by debug information readers.
+@item ARCH
+Unwinders installed by the architecture specific code.
+@end table
+
+@kindex maint frame-unwinder disable
+@kindex maint frame-unwinder enable
+@item maint frame-unwinder disable [@code{-all} | @code{-name} @var{name} | [@code{-class}] @var{class}]
+@item maint frame-unwinder enable [@code{-all} | @code{-name} @var{name} | [@code{-class}] @var{class}]
+Disable or enable frame unwinders.  This is meant only as a testing tool, and
+@value{GDBN} is not guaranteed to work properly if it is unable to find
+valid frame unwinders.
+
+The meaning of each of the invocations are as follows:
+
+@table @samp
+@item @code{-all}
+Disable or enable all unwinders.
+@item @code{-name} @var{name}
+@var{name} is the exact name of the unwinder to be disabled or enabled.
+@item [@code{-class}] @var{class}
+@var{class} is the class of frame unwinders to be disabled or enabled.
+The class may include the prefix @code{FRAME_UNWINDER_}, but it is not
+required.
+@end table
+
+@var{name} and @var{class} are always case insensitive.  If no option
+starting wth @code{-} is given, @value{GDBN} assumes @code{-class}.
 
 @kindex maint set worker-threads
 @kindex maint show worker-threads
@@ -42742,7 +42878,7 @@ seven repeats (@samp{$}) can be expanded using a repeat count of only
 five (@samp{"}).  For example, @samp{00000000} can be encoded as
 @samp{0*"00}.
 
-@xref{Standard Replies} for standard error responses, and how to
+@xref{Standard Replies}, for standard error responses, and how to
 respond indicating a command is not supported.
 
 In describing packets (commands and responses), each description has a
@@ -43107,24 +43243,25 @@ probes the target state as if a new connection was opened
 @item m @var{addr},@var{length}
 @cindex @samp{m} packet
 Read @var{length} addressable memory units starting at address @var{addr}
-(@pxref{addressable memory unit}).  Note that @var{addr} may not be aligned to
-any particular boundary.
+(@pxref{addressable memory unit}).  Note that @var{addr} does not have to
+be aligned to any particular boundary.
 
+@cindex alignment of remote memory accesses
+@cindex size of remote memory accesses
+@cindex memory, alignment and size of remote accesses
 The stub need not use any particular size or alignment when gathering
 data from memory for the response; even if @var{addr} is word-aligned
 and @var{length} is a multiple of the word size, the stub is free to
 use byte accesses, or not.  For this reason, this packet may not be
 suitable for accessing memory-mapped I/O devices.
-@cindex alignment of remote memory accesses
-@cindex size of remote memory accesses
-@cindex memory, alignment and size of remote accesses
 
 Reply:
 @table @samp
 @item @var{XX@dots{}}
 Memory contents; each byte is transmitted as a two-digit hexadecimal number.
 The reply may contain fewer addressable memory units than requested if the
-server was able to read only part of the region of memory.
+server was reading from a trace frame memory and was able to read only part
+of the region of memory.
 @end table
 
 Unlike most packets, this packet does not support
@@ -43462,6 +43599,37 @@ for success (@pxref{Stop Reply Packets})
 @item vStopped
 @cindex @samp{vStopped} packet
 @xref{Notification Packets}.
+
+@item x @var{addr},@var{length}
+@anchor{x packet}
+@cindex @samp{x} packet
+Read @var{length} addressable memory units starting at address @var{addr}
+(@pxref{addressable memory unit}).  Note that @var{addr} does not have to
+be aligned to any particular boundary.
+
+@cindex alignment of remote memory accesses
+@cindex size of remote memory accesses
+@cindex memory, alignment and size of remote accesses
+The stub need not use any particular size or alignment when gathering
+data from memory for the response; even if @var{addr} is word-aligned
+and @var{length} is a multiple of the word size, the stub is free to
+use byte accesses, or not.  For this reason, this packet may not be
+suitable for accessing memory-mapped I/O devices.
+
+@value{GDBN} will only use this packet if the stub reports the
+@samp{binary-upload} feature is supported in its @samp{qSupported}
+reply (@pxref{qSupported}).
+
+Reply:
+@table @samp
+@item b @var{XX@dots{}}
+Memory contents as binary data (@pxref{Binary Data}).
+The reply may contain fewer addressable memory units than requested if the
+server was reading from a trace frame memory and was able to read only part
+of the region of memory.
+@item E @var{NN}
+for an error
+@end table
 
 @item X @var{addr},@var{length}:@var{XX@dots{}}
 @anchor{X packet}
@@ -44290,7 +44458,7 @@ tags found in the requested memory range.
 @cindex check if a given address is in a memory tagged region
 @cindex @samp{qIsAddressTagged} packet
 @item qIsAddressTagged:@var{address}
-@anchor {qIsAddressTagged}
+@anchor{qIsAddressTagged}
 Check if address @var{address} is in a memory tagged region; if it is, it's
 said to be @dfn{tagged}.  The target is responsible for checking it, as this
 is architecture-specific.
@@ -45099,6 +45267,11 @@ These are the currently defined stub features and their properties:
 @tab @samp{+}
 @tab No
 
+@item @samp{binary-upload}
+@tab No
+@tab @samp{-}
+@tab No
+
 @end multitable
 
 These are the currently defined stub features, in more detail:
@@ -45345,6 +45518,9 @@ The remote stub supports replying with an error in a
 send this feature back to @value{GDBN} in the @samp{qSupported} reply,
 @value{GDBN} will always support @samp{E.@var{errtext}} format replies
 if it sent the @samp{error-message} feature.
+
+@item binary-upload
+The remote stub supports the @samp{x} packet (@pxref{x packet}).
 @end table
 
 @item qSymbol::
@@ -45927,7 +46103,7 @@ tracepoints (@pxref{Tracepoints}).
 
 @table @samp
 
-@item QTDP:@var{n}:@var{addr}:@var{ena}:@var{step}:@var{pass}[:F@var{flen}][:X@var{len},@var{bytes}]@r{[}-@r{]}
+@item QTDP:@var{n}:@var{addr}:@var{ena}:@var{step}:@var{pass}[:F@var{flen}][:S][:X@var{len},@var{bytes}]@r{[}-@r{]}
 @cindex @samp{QTDP} packet
 Create a new tracepoint, number @var{n}, at @var{addr}.  If @var{ena}
 is @samp{E}, then the tracepoint is enabled; if it is @samp{D}, then
@@ -45935,7 +46111,8 @@ the tracepoint is disabled.  The @var{step} gives the tracepoint's step
 count, and @var{pass} gives its pass count.  If an @samp{F} is present,
 then the tracepoint is to be a fast tracepoint, and the @var{flen} is
 the number of bytes that the target should copy elsewhere to make room
-for the tracepoint.  If an @samp{X} is present, it introduces a
+for the tracepoint.  If an @samp{S} is present, the tracepoint is to be
+a static tracepoint.  If an @samp{X} is present, it introduces a
 tracepoint condition, which consists of a hexadecimal length, followed
 by a comma and hex-encoded bytes, in a manner similar to action
 encodings as described below.  If the trailing @samp{-} is present,
@@ -45994,6 +46171,9 @@ it directs.  The agent expression @var{expr} is as described in
 two-digit hex number in the packet; @var{len} is the number of bytes
 in the expression (and thus one-half the number of hex digits in the
 packet).
+
+@item L
+Collect static trace data.
 
 @end table
 
@@ -46350,9 +46530,9 @@ query), until the target responds with @samp{l} (lower-case ell, for
 @item qTSTMat:@var{address}
 @anchor{qTSTMat}
 @cindex @samp{qTSTMat} packet
-This packets requests data about static tracepoint markers in the
+This packet requests data about static tracepoint markers in the
 target program at @var{address}.  Replies to this packet follow the
-syntax of the @samp{qTfSTM} and @code{qTsSTM} packets that list static
+syntax of the @code{qTfSTM} and @code{qTsSTM} packets that list static
 tracepoint markers.
 
 @item QTSave:@var{filename}
@@ -47119,7 +47299,7 @@ conditions is met:
 
 @itemize @bullet
 @item
-The user types @kbd{Ctrl-c}.  The behaviour is as explained above, and the
+The user types @kbd{Ctrl-c}.  The behavior is as explained above, and the
 @code{read}
 system call is treated as finished.
 
@@ -49004,7 +49184,6 @@ registers using the capitalization used in the description.
 * MIPS Features::
 * M68K Features::
 * NDS32 Features::
-* Nios II Features::
 * OpenRISC 1000 Features::
 * PowerPC Features::
 * RISC-V Features::
@@ -49269,7 +49448,7 @@ bytes.  @xref{svl}.
 @item
 @code{SVCR} is a 64-bit status pseudo-register with two valid bits.  Bit 0
 (@sc{sm}) shows whether the streaming @acronym{SVE} mode is enabled or disabled.
-Bit 1 (@sc{ZA}) shows whether the @code{ZA} register state is active (in use) or
+Bit 1 (@sc{za}) shows whether the @code{ZA} register state is active (in use) or
 not.
 @xref{aarch64 sme svcr}.
 
@@ -49836,16 +50015,6 @@ not being listed explicitly, will be synthesized from halves of the
 overlapping 64-bit double-precision registers.  Listing 32-bit
 single-precision registers explicitly is deprecated, and the
 support to it could be totally removed some day.
-
-@node Nios II Features
-@subsection Nios II Features
-@cindex target descriptions, Nios II features
-
-The @samp{org.gnu.gdb.nios2.cpu} feature is required for Nios II
-targets.  It should contain the 32 core registers (@samp{zero},
-@samp{at}, @samp{r2} through @samp{r23}, @samp{et} through @samp{ra}),
-@samp{pc}, and the 16 control registers (@samp{status} through
-@samp{mpuacc}).
 
 @node OpenRISC 1000 Features
 @subsection Openrisc 1000 Features
@@ -50580,6 +50749,7 @@ Show the current verbosity setting.
 * gdb man::                     The GNU Debugger man page
 * gdbserver man::               Remote Server for the GNU Debugger man page
 * gcore man::                   Generate a core file of a running program
+* gstack man::                  Print a stack trace of a running program
 * gdbinit man::                 gdbinit scripts
 * gdb-add-index man::           Add index files to speed up GDB
 @end menu
@@ -51262,6 +51432,75 @@ Richard M. Stallman and Roland H. Pesch, July 1991.
 @end ifset
 @c man end
 
+@node gstack man
+@heading gstack
+
+@c man title gstack Print a stack trace of a running program
+
+@format
+@c man begin SYNOPSIS gstack
+gstack [-h | --help] [-v | --version] @var{pid}
+@c man end
+@end format
+
+@c man begin DESCRIPTION gstack
+Print a stack trace of a running program with process ID @var{pid}.  If the process
+is multi-threaded, @command{gstack} outputs backtraces for every thread which exists
+in the process.
+
+The script invokes @value{GDBN}, attaches to the given process ID, prints the stack trace,
+and detaches from the process.
+
+@command{gstack} exits with non-zero status if @code{gdb} was unable to attach to
+the given process ID for any reason, such as a non-existent process ID or
+insufficient privileges to attach to the process.
+@c man end
+
+@c man begin OPTIONS gstack
+@table @env
+@item --help
+@itemx -h
+List all options, with brief explanations.
+
+@item --version
+@itemx -v
+Print version information and then exit.
+@end table
+@c man end
+
+@c man begin ENVIRONMENT gstack
+@table @env
+@item AWK
+Full file name for an Awk interpreter to use.  If not set, @env{PATH} will be
+searched for an @code{awk} program.
+
+@item GDB
+Full file name for a @value{GDBN} executable to use to generate stack backtraces.
+If not set, @env{PATH} will be searched for a @code{gdb} program.
+
+@item GDBARGS
+Optional arguments to be passed to the @code{gdb} program.
+@end table
+@c man end
+
+@c man begin SEEALSO gstack
+@ifset man
+The full documentation for @value{GDBN} is maintained as a Texinfo manual.
+If the @code{info} and @code{gdb} programs and @value{GDBN}'s Texinfo
+documentation are properly installed at your site, the command
+
+@smallexample
+info gdb
+@end smallexample
+
+@noindent
+should give you access to the complete manual.
+
+@cite{Using GDB: A Guide to the GNU Source-Level Debugger},
+Richard M. Stallman and Roland H. Pesch, July 1991.
+@end ifset
+@c man end
+
 @node gdbinit man
 @heading gdbinit
 
@@ -51383,7 +51622,7 @@ Richard M. Stallman and Roland H. Pesch, July 1991.
 @c man title gdb-add-index Add index files to speed up GDB
 
 @c man begin SYNOPSIS gdb-add-index
-gdb-add-index @var{filename}
+gdb-add-index [-dwarf-5] @var{filename}
 @c man end
 
 @c man begin DESCRIPTION gdb-add-index
@@ -51395,14 +51634,24 @@ provides a way to build an index, which speeds up startup.
 
 To determine whether a file contains such an index, use the command
 @kbd{readelf -S filename}: the index is stored in a section named
-@code{.gdb_index}.  The index file can only be produced on systems
+@code{.gdb_index} (pre-DWARF 5) or @code{.debug_names} and
+@code{.debug_str} (DWARF 5).  Indexes can only be produced on systems
 which use ELF binaries and DWARF debug information (i.e., sections
 named @code{.debug_*}).
 
-@command{gdb-add-index} uses @value{GDBN} and @command{objdump} found
-in the @env{PATH} environment variable.  If you want to use different
-versions of these programs, you can specify them through the
-@env{GDB} and @env{OBJDUMP} environment variables.
+By default @command{gdb-add-index} will add a pre-DWARF 5
+@code{.gdb_index} section to @var{filename}.  With @option{-dwarf-5}
+DWARF 5 sections are added instead.
+
+@var{filename} must be writable.
+
+@command{gdb-add-index} uses @value{GDBN}, @command{objcopy}, and
+@command{readelf} found in the @env{PATH} environment variable.  If
+you want to use different versions of these programs, you can specify
+them through the appropriate environment variables (see below).
+
+@command{gdb-add-index} exits with status 0 if it succeeds in creating
+the index for @var{filename} or greater than 0 if an error occurs.
 
 See more in
 @ifset man
@@ -51412,6 +51661,32 @@ the @value{GDBN} manual in node @code{Index Files}
 @ifclear man
 @ref{Index Files}.
 @end ifclear
+@c man end
+
+@c man begin OPTIONS gdb-add-index
+@table @env
+@item -dwarf-5
+Add DWARF 5 sections instead of previous @code{.debug_index} section.
+
+@end table
+@c man end
+
+@c man begin ENVIRONMENT gdb-add-index
+@table @env
+@item GDB
+Full file name of the @code{gdb} program to use for index generation.
+If not set, the @env{PATH} will be searched for a @code{gdb} program.
+
+@item OBJCOPY
+Full file name of the @code{objcopy} program to use to copy section
+information into the given file.  If not set, the @env{PATH} will be searched
+for a @code{objcopy} program.
+
+@item READELF
+Full file name of the @code{readelf} program to use to inspect
+properties of the given file.  If not set, the @env{PATH} will be searched
+for a @code{readelf} program.
+@end table
 @c man end
 
 @c man begin SEEALSO gdb-add-index

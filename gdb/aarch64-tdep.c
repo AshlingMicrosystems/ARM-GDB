@@ -1205,16 +1205,16 @@ aarch64_prologue_prev_register (const frame_info_ptr &this_frame,
 }
 
 /* AArch64 prologue unwinder.  */
-static frame_unwind aarch64_prologue_unwind =
-{
+static const frame_unwind_legacy aarch64_prologue_unwind (
   "aarch64 prologue",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   aarch64_prologue_frame_unwind_stop_reason,
   aarch64_prologue_this_id,
   aarch64_prologue_prev_register,
   NULL,
   default_frame_sniffer
-};
+);
 
 /* Allocate and fill in *THIS_CACHE with information about the prologue of
    *THIS_FRAME.  Do not do this is if *THIS_CACHE was already allocated.
@@ -1300,16 +1300,16 @@ aarch64_stub_unwind_sniffer (const struct frame_unwind *self,
 }
 
 /* AArch64 stub unwinder.  */
-static frame_unwind aarch64_stub_unwind =
-{
+static const frame_unwind_legacy aarch64_stub_unwind (
   "aarch64 stub",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   aarch64_stub_frame_unwind_stop_reason,
   aarch64_stub_this_id,
   aarch64_prologue_prev_register,
   NULL,
   aarch64_stub_unwind_sniffer
-};
+);
 
 /* Return the frame base address of *THIS_FRAME.  */
 
@@ -2584,7 +2584,7 @@ aarch64_extract_return_value (struct type *type, struct regcache *regs,
     }
   else
     {
-      /* For a structure or union the behaviour is as if the value had
+      /* For a structure or union the behavior is as if the value had
 	 been stored to word-aligned memory and then loaded into
 	 registers with 64-bit load instruction(s).  */
       int len = type->length ();
@@ -2710,7 +2710,7 @@ aarch64_store_return_value (struct type *type, struct regcache *regs,
     }
   else
     {
-      /* For a structure or union the behaviour is as if the value had
+      /* For a structure or union the behavior is as if the value had
 	 been stored to word-aligned memory and then loaded into
 	 registers with 64-bit load instruction(s).  */
       int len = type->length ();
@@ -4121,7 +4121,7 @@ aarch64_memtag_matches_p (struct gdbarch *gdbarch,
 
   /* Fetch the allocation tag for ADDRESS.  */
   std::optional<CORE_ADDR> atag
-    = aarch64_mte_get_atag (gdbarch_remove_non_address_bits (gdbarch, addr));
+    = aarch64_mte_get_atag (aarch64_remove_non_address_bits (gdbarch, addr));
 
   if (!atag.has_value ())
     return true;
@@ -4160,7 +4160,7 @@ aarch64_set_memtags (struct gdbarch *gdbarch, struct value *address,
   else
     {
       /* Remove the top byte.  */
-      addr = gdbarch_remove_non_address_bits (gdbarch, addr);
+      addr = aarch64_remove_non_address_bits (gdbarch, addr);
 
       /* With G being the number of tag granules and N the number of tags
 	 passed in, we can have the following cases:
@@ -4209,7 +4209,7 @@ aarch64_get_memtag (struct gdbarch *gdbarch, struct value *address,
   else
     {
       /* Remove the top byte.  */
-      addr = gdbarch_remove_non_address_bits (gdbarch, addr);
+      addr = aarch64_remove_non_address_bits (gdbarch, addr);
       std::optional<CORE_ADDR> atag = aarch64_mte_get_atag (addr);
 
       if (!atag.has_value ())
@@ -4236,10 +4236,9 @@ aarch64_memtag_to_string (struct gdbarch *gdbarch, struct value *tag_value)
   return string_printf ("0x%s", phex_nz (tag, sizeof (tag)));
 }
 
-/* AArch64 implementation of the remove_non_address_bits gdbarch hook.  Remove
-   non address bits from a pointer value.  */
+/* See aarch64-tdep.h.  */
 
-static CORE_ADDR
+CORE_ADDR
 aarch64_remove_non_address_bits (struct gdbarch *gdbarch, CORE_ADDR pointer)
 {
   /* By default, we assume TBI and discard the top 8 bits plus the VA range
@@ -4750,9 +4749,15 @@ aarch64_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
     tdep->ra_sign_state_regnum = ra_sign_state_offset + num_regs;
 
   /* Architecture hook to remove bits of a pointer that are not part of the
-     address, like memory tags (MTE) and pointer authentication signatures.  */
-  set_gdbarch_remove_non_address_bits (gdbarch,
-				       aarch64_remove_non_address_bits);
+     address, like memory tags (MTE) and pointer authentication signatures.
+     Configure address adjustment for watchpoints, breakpoints and memory
+     transfer.  */
+  set_gdbarch_remove_non_address_bits_watchpoint
+    (gdbarch, aarch64_remove_non_address_bits);
+  set_gdbarch_remove_non_address_bits_breakpoint
+    (gdbarch, aarch64_remove_non_address_bits);
+  set_gdbarch_remove_non_address_bits_memory
+    (gdbarch, aarch64_remove_non_address_bits);
 
   /* SME pseudo-registers.  */
   if (tdep->has_sme ())

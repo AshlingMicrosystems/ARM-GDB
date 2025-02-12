@@ -1,5 +1,5 @@
 /* tc-bpf.c -- Assembler for the Linux eBPF.
-   Copyright (C) 2019-2024 Free Software Foundation, Inc.
+   Copyright (C) 2019-2025 Free Software Foundation, Inc.
    Contributed by Oracle, Inc.
 
    This file is part of GAS, the GNU Assembler.
@@ -346,7 +346,9 @@ tc_gen_reloc (asection *sec ATTRIBUTE_UNUSED, fixS *fixP)
   bfd_reloc_code_real_type r_type = fixP->fx_r_type;
   arelent *reloc;
 
-  reloc = XNEW (arelent);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
+  *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixP->fx_addsy);
 
   if (fixP->fx_pcrel)
    {
@@ -366,11 +368,6 @@ tc_gen_reloc (asection *sec ATTRIBUTE_UNUSED, fixS *fixP)
 		    _("relocation is not supported"));
       return NULL;
     }
-
-  //XXX  gas_assert (!fixP->fx_pcrel == !reloc->howto->pc_relative);
-
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
-  *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixP->fx_addsy);
 
   /* Use fx_offset for these cases.  */
   if (fixP->fx_r_type == BFD_RELOC_VTABLE_ENTRY
@@ -1277,7 +1274,7 @@ parse_expression (char *s, expressionS *exp)
      these whitespaces.  */
   {
     char *p;
-    for (p = s - 1; p >= saved_s && *p == ' '; --p)
+    for (p = s - 1; p >= saved_s && is_whitespace (*p); --p)
       --s;
   }
 
@@ -1504,7 +1501,7 @@ md_assemble (char *str ATTRIBUTE_UNUSED)
           if (*p == ' ')
             {
               /* Expect zero or more spaces.  */
-              while (*s != '\0' && (*s == ' ' || *s == '\t'))
+              while (is_whitespace (*s))
                 s += 1;
               p += 1;
             }
@@ -1523,20 +1520,20 @@ md_assemble (char *str ATTRIBUTE_UNUSED)
               else if (*(p + 1) == 'w')
                 {
                   /* Expect zero or more spaces.  */
-                  while (*s != '\0' && (*s == ' ' || *s == '\t'))
+                  while (is_whitespace (*s))
                     s += 1;
                   p += 2;
                 }
               else if (*(p + 1) == 'W')
                 {
                   /* Expect one or more spaces.  */
-                  if (*s != ' ' && *s != '\t')
+                  if (!is_whitespace (*s))
                     {
                       PARSE_ERROR ("expected white space, got '%s'",
                                    s);
                       break;
                     }
-                  while (*s != '\0' && (*s == ' ' || *s == '\t'))
+                  while (is_whitespace (*s))
                     s += 1;
                   p += 2;
                 }
@@ -1623,7 +1620,7 @@ md_assemble (char *str ATTRIBUTE_UNUSED)
 
                   if (p[1] == 'I')
                     {
-                      while (*s == ' ' || *s == '\t')
+                      while (is_whitespace (*s))
                         s += 1;
                       if (*s != '+' && *s != '-')
                         {
@@ -1646,7 +1643,7 @@ md_assemble (char *str ATTRIBUTE_UNUSED)
                 {
                   char *exp = NULL;
 
-                  while (*s == ' ' || *s == '\t')
+                  while (is_whitespace (*s))
                     s += 1;
                   if (*s != '+' && *s != '-')
                     {
@@ -1738,9 +1735,9 @@ md_assemble (char *str ATTRIBUTE_UNUSED)
       if (*p == '\0')
         {
           /* Allow white spaces at the end of the line.  */
-          while (*s != '\0' && (*s == ' ' || *s == '\t'))
+          while (is_whitespace (*s))
             s += 1;
-          if (*s == '\0')
+          if (is_end_of_stmt (*s))
             /* We parsed an instruction successfully.  */
             break;
           PARSE_ERROR ("extra junk at end of line");

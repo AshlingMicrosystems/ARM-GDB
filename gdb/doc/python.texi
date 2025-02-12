@@ -1,4 +1,4 @@
-@c Copyright (C) 2008--2024 Free Software Foundation, Inc.
+@c Copyright (C) 2008--2025 Free Software Foundation, Inc.
 @c Permission is granted to copy, distribute and/or modify this document
 @c under the terms of the GNU Free Documentation License, Version 1.3 or
 @c any later version published by the Free Software Foundation; with the
@@ -225,6 +225,7 @@ optional arguments while skipping others.  Example:
 * Finish Breakpoints in Python:: Setting Breakpoints on function return
                                 using Python.
 * Lazy Strings In Python::      Python representation of lazy strings.
+* Colors In Python::            Python representation of colors.
 * Architectures In Python::     Python representation of architectures.
 * Registers In Python::         Python representation of registers.
 * Connections In Python::       Python representation of connections.
@@ -1180,7 +1181,7 @@ refer to, @code{False} (the default) if they shouldn't.  Note that, unlike
 for the @code{print} command, references are not automatically expanded
 when using the @code{format_string} method or the @code{str}
 function.  There is no global @code{print} setting to change the default
-behaviour.
+behavior.
 
 @item actual_objects
 @code{True} if the representation of a pointer to an object should
@@ -1279,9 +1280,10 @@ fetched and converted to the given length.
 @end defun
 
 @defun Value.lazy_string (@r{[}encoding @r{[}, length@r{]]})
-If this @code{gdb.Value} represents a string, then this method
-converts the contents to a @code{gdb.LazyString} (@pxref{Lazy Strings
-In Python}).  Otherwise, this method will throw an exception.
+This method attempts to convert this @code{gdb.Value} to a
+@code{gdb.LazyString} (@pxref{Lazy Strings In Python}).  Values of
+array or pointer type can be converted; for other types, this method
+will throw an exception.
 
 If the optional @var{encoding} argument is given, it must be a string
 naming the encoding of the @code{gdb.LazyString}.  Some examples are:
@@ -3012,7 +3014,7 @@ unwinders can derive, though it is not required that unwinders derive
 from this class, so long as any user created unwinder has the required
 @code{name} and @code{enabled} attributes.
 
-@defun gdb.unwinder.Unwinder.__init__(name)
+@defun gdb.unwinder.Unwinder.__init__ (name)
 The @var{name} is a string used to reference this unwinder within some
 @value{GDBN} commands (@pxref{Managing Registered Unwinders}).
 @end defun
@@ -3038,7 +3040,7 @@ most cases this class will be sufficient.
 
 @code{gdb.unwinder.FrameId} has the following method:
 
-@defun gdb.unwinder.FrameId.__init__(sp, pc, special = @code{None})
+@defun gdb.unwinder.FrameId.__init__ (sp, pc, special = @code{None})
 The @var{sp} and @var{pc} arguments are required and should be either
 a @code{gdb.Value} object, or an integer.
 
@@ -4087,7 +4089,7 @@ This is emitted when the TUI is enabled or disabled.  The event is of
 type @code{gdb.TuiEnabledEvent}, which has a single read-only
 attribute:
 
-@defvar TuiStatusEvent.enabled
+@defvar TuiEnabledEvent.enabled
 If the TUI has just been enabled, this is @code{True}; otherwise it is
 @code{False}.
 @end defvar
@@ -4950,7 +4952,7 @@ command, a string.  The arguments, @var{arg}, are passed to the
 command.  Each argument must also be a string.
 
 This function returns a Python dictionary whose contents reflect the
-corresponding @sc{GDB/MI} command's output.  Refer to the
+corresponding @sc{gdb/mi} command's output.  Refer to the
 documentation for these commands for details.  Lists are represented
 as Python lists, and tuples are represented as Python dictionaries.
 
@@ -5241,6 +5243,11 @@ except the special value -1 is returned for the setting of ``unlimited''.
 @item gdb.PARAM_ENUM
 The value is a string, which must be one of a collection string
 constants provided when the parameter is created.
+
+@findex PARAM_COLOR
+@findex gdb.PARAM_COLOR
+@item gdb.PARAM_COLOR
+The value is @code{gdb.Color} instance.
 @end table
 
 @node Functions In Python
@@ -6039,6 +6046,11 @@ The block containing this block.  If this parent block does not exist,
 this attribute holds @code{None}.  This attribute is not writable.
 @end defvar
 
+@defvar Block.subblocks
+A list of blocks nested in this block.  If there are no blocks nested,
+this attribute holds an empty list.  This attribute is not writable.
+@end defvar
+
 @defvar Block.global_block
 The global block associated with this block.  This attribute is not
 writable.
@@ -6197,6 +6209,11 @@ of a symbol.  Each address class is a constant defined in the
 @code{gdb} module and described later in this chapter.
 @end defvar
 
+@defvar Symbol.domain
+The domain of the symbol.  Each domain is a constant defined in the
+@code{gdb} module and described later in this chapter.
+@end defvar
+
 @defvar Symbol.needs_frame
 This is @code{True} if evaluating this symbol's value requires a frame
 (@pxref{Frames In Python}) and @code{False} otherwise.  Typically,
@@ -6205,6 +6222,11 @@ local variables will require a frame, but other symbols will not.
 
 @defvar Symbol.is_argument
 @code{True} if the symbol is an argument of a function.
+@end defvar
+
+@defvar Symbol.is_artificial
+@code{True} if the symbol is artificial.  An artificial symbol is one
+that is introduced by the compiler.
 @end defvar
 
 @defvar Symbol.is_constant
@@ -6971,10 +6993,12 @@ A @code{gdb.LazyString} is represented in @value{GDBN} as an
 that will be used to encode that region of memory, and a @code{length}
 to delimit the region of memory that represents the string.  The
 difference between a @code{gdb.LazyString} and a string wrapped within
-a @code{gdb.Value} is that a @code{gdb.LazyString} will be treated
-differently by @value{GDBN} when printing.  A @code{gdb.LazyString} is
+a @code{gdb.Value} is that a @code{gdb.LazyString} will only be
 retrieved and encoded during printing, while a @code{gdb.Value}
 wrapping a string is immediately retrieved and encoded on creation.
+
+A @code{gdb.LazyString} can be created using the
+@code{gdb.Value.lazy_string} method (@pxref{Values From Inferior}).
 
 A @code{gdb.LazyString} object has the following functions:
 
@@ -7011,6 +7035,98 @@ resolve this to the lazy string's character type, use the type's
 @code{target} method.  @xref{Types In Python}.  This attribute is not
 writable.
 @end defvar
+
+@node Colors In Python
+@subsubsection Python representation of colors
+
+@cindex colors in python
+@tindex gdb.Color
+You can assign instance of @code{Color} to the @code{value} of
+a @code{Parameter} instance created with @code{PARAM_COLOR}.
+
+@code{Color} may refer to an index from color palette or contain components
+of a color from some colorspace.
+
+@defun Color.__init__ (@r{[}@var{value} @r{[}, @var{color-space}@r{]}@r{]})
+
+@var{value} is @code{None} (meaning the terminal's default color),
+an integer index of a color in palette, tuple with color components
+or a string.  String can be a hex RGB triplet in @samp{#RRGGBB} format
+or one of the following color names:
+@samp{none} (meaning the terminal's default color), @samp{black}, @samp{red},
+@samp{green}, @samp{yellow}, @samp{blue}, @samp{magenta}, @samp{cyan},
+or @samp{white}.
+
+@var{color-space} should be one of the @samp{COLORSPACE_} constants.  This
+argument tells @value{GDBN} which color space @var{value} belongs.
+@end defun
+
+@defvar Color.is_none
+This atribute is boolean.  If its value is @code{True} then color is terminal's
+default.
+@end defvar
+
+@defvar Color.is_indexed
+This atribute is boolean.  If its value is @code{True} then color is indexed,
+i.e. belongs to some palette.
+@end defvar
+
+@defvar Color.is_direct
+This atribute is boolean.  If its value is @code{True} then this object
+describes direct colour in the sense of ISO/IEC 8613-6.
+@end defvar
+
+@defvar Color.index
+This attribute exist if @code{is_indexed} is @code{True}.  Its integer value is
+index of a color in a palette.
+@end defvar
+
+@defvar Color.components
+This attribute exist if @code{is_direct} is @code{True}.  Its value is tuple
+with integer components of a color.
+@end defvar
+
+@defun Color.escape_sequence (@var{self}, @var{is_foreground})
+Returns string to change terminal's color to this.
+
+If @var{is_foreground} is @code{True}, then the returned sequence will change
+foreground color.  Otherwise, the returned sequence will change background
+color.
+@end defun
+
+When color is initialized, its color space must be specified.  The
+available color spaces are represented by constants defined in the @code{gdb}
+module:
+
+@table @code
+@findex COLORSPACE_MONOCHROME
+@findex gdb.COLORSPACE_MONOCHROME
+@item gdb.COLORSPACE_MONOCHROME
+Palette with only terminal's default color.
+
+@findex COLORSPACE_ANSI_8COLOR
+@findex gdb.COLORSPACE_ANSI_8COLOR
+@item gdb.COLORSPACE_ANSI_8COLOR
+Palette with eight standard colors of ISO/IEC 6429 "black", "red", "green", etc.
+
+@findex COLORSPACE_AIXTERM_16COLOR
+@findex gdb.COLORSPACE_AIXTERM_16COLOR
+@item gdb.COLORSPACE_AIXTERM_16COLOR
+Palette with 16 colors.  First eight are standard colors of ISO/IEC 6429
+"black", "red", "green", etc.  Next eight are their bright version.
+
+@findex COLORSPACE_XTERM_256COLOR
+@findex gdb.COLORSPACE_XTERM_256COLOR
+@item gdb.COLORSPACE_XTERM_256COLOR
+Palette with 256 colors.  First 16 are from COLORSPACE_AIXTERM_16COLOR.  Next
+216 colors are 6x6x6 RGB cube.  And last 24 colors form grayscale ramp.
+
+@findex COLORSPACE_RGB_24BIT
+@findex gdb.COLORSPACE_RGB_24BIT
+@item gdb.COLORSPACE_RGB_24BIT
+Direct 24-bit RGB colors.
+
+@end table
 
 @node Architectures In Python
 @subsubsection Python representation of architectures
@@ -7075,6 +7191,10 @@ If @var{signed} is not specified, it defaults to @code{True}.  If
 
 If the indicated type cannot be found, this function will throw a
 @code{ValueError} exception.
+@end defun
+
+@defun Architecture.void_type ()
+This function returns a void type.
 @end defun
 
 @anchor{gdbpy_architecture_registers}

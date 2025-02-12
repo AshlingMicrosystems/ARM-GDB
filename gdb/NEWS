@@ -1,7 +1,91 @@
 		What has changed in GDB?
 	     (Organized release by release)
 
-*** Changes since GDB 15
+*** Changes since GDB 16
+
+* "set style" commands now supports numeric format for basic colors
+  from 0 to 255 and #RRGGBB format for TrueColor.
+
+* New built-in convenience variable $_colorsupport provides comma-separated
+  list of color space names supported by terminal.  Each color space name is one
+  of monochrome, ansi_8color, aixterm_16color, xterm_256color or rgb_24bit.
+  It is handy for conditionally using styling colors based on terminal features.
+  For example:
+
+  (gdb) if $_regex ($_colorsupport, ".*(^|,)rgb_24bit($|,).*")
+   >set style filename background #FACADE
+   >else
+   >if $_regex ($_colorsupport, ".*(^|,)xterm_256color($|,).*")
+    >set style filename background 224
+    >else
+    >set style filename background red
+    >end
+   >end
+
+* UST (static tracepoint) support from gdbserver has been removed.
+
+* Linux checkpoint code has been updated to work with multiple inferiors.
+
+* New commands
+
+maintenance check psymtabs
+  Renamed from maintenance check-psymtabs
+
+maintenance check symtabs
+  Renamed from maintenance check-symtabs
+
+set riscv numeric-register-names on|off
+show riscv numeric-register-names
+  Controls whether GDB refers to risc-v registers by their numeric names
+  (e.g 'x1') or their abi names (e.g. 'ra').
+  Defaults to 'off', matching the old behaviour (abi names).
+
+* Python API
+
+  ** New class gdb.Color for dealing with colors.
+
+  ** New constant gdb.PARAM_COLOR represents color type of a
+     gdb.Parameter.value.  Parameter's value is gdb.Color instance.
+
+* Guile API
+
+  ** New type <gdb:color> for dealing with colors.
+
+  ** New constant PARAM_COLOR represents color type of a value
+     of a <gdb:parameter> object.  Parameter's value is <gdb::color> instance.
+
+* New remote packets
+
+binary-upload in qSupported reply
+  If the stub sends back 'binary-upload+' in it's qSupported reply,
+  then GDB will, where possible, make use of the 'x' packet.  If the
+  stub doesn't report this feature supported, then GDB will not use
+  the 'x' packet.
+
+* MI changes
+
+** The =library-unloaded event now includes the 'ranges' field, which
+   has the same meaning as for the =library-loaded event.
+
+** The =library-unloaded event now includes the 'still-in-use' field.
+   This field is 'true' when a library is unloaded (removed from the
+   inferior's list of loaded libraries), but the mapping within the
+   inferior's address space is retained, as the library was mapped
+   multiple times, and the same mapping was being reused.  In all
+   other cases, this field will have the value 'false'.
+
+* Support for stabs debugging format and the a.out/dbx object format is
+  deprecated, and will be removed in GDB 18.
+
+*** Changes in GDB 16
+
+* Support for Nios II targets has been removed as this architecture
+  has been EOL'ed by Intel.
+
+* GDB now supports watchpoints for tagged data pointers (see
+  https://en.wikipedia.org/wiki/Tagged_pointer) on amd64, such as the
+  one used by the Linear Address Masking (LAM) feature provided by
+  Intel.
 
 * Debugging support for Intel MPX has been removed.  This includes the
   removal of
@@ -51,6 +135,11 @@
 
 * The Ada 'Object_Size attribute is now supported.
 
+* Support for process record/replay and reverse debugging on loongarch*-linux*
+  targets has been added.
+
+* New bash script gstack uses GDB to print stack traces of running processes.
+
 * Python API
 
   ** Added gdb.record.clear.  Clears the trace data of the current recording.
@@ -78,6 +167,16 @@
   ** The 'qualified' argument to gdb.Breakpoint constructor will no
      longer accept non-bool types.
 
+  ** Added the gdb.Symbol.is_artificial attribute.
+
+  ** Added gdb.Block.subblocks.  Returns a list of blocks contained in that
+     block.
+
+  ** Added gdb.Symbol.domain.  Contains the domain of the symbol.
+
+  ** Added gdb.Architecture.void_type. Returns a gdb.Type representing "void"
+     type for that architecture.
+
 * Debugger Adapter Protocol changes
 
   ** The "scopes" request will now return a scope holding global
@@ -87,12 +186,36 @@
      the return value from the latest "stepOut" command, when
      appropriate.
 
+  ** The "launch" and "attach" requests were rewritten in accordance
+     with some clarifications to the spec.  Now they can be sent at
+     any time after the "initialized" event, but will not take effect
+     (or send a response) until after the "configurationDone" request
+     has been sent.
+
+  ** The "variables" request will not return artificial symbols.
+
 * New commands
+
+show jit-reader-directory
+  Show the name of the directory that "jit-reader-load" uses for
+  relative file names.
 
 set style line-number foreground COLOR
 set style line-number background COLOR
 set style line-number intensity VALUE
   Control the styling of line numbers printed by GDB.
+
+set style command foreground COLOR
+set style command background COLOR
+set style command intensity VALUE
+  Control the styling of GDB commands when displayed by GDB.
+
+set style title foreground COLOR
+set style title background COLOR
+set style title intensity VALUE
+  This style now applies to the header line of lists, for example the
+  first line of the output of "info breakpoints".  Previous uses of
+  this style have been replaced with the new "command" style.
 
 set warn-language-frame-mismatch [on|off]
 show warn-language-frame-mismatch
@@ -109,6 +232,13 @@ maintenance info blocks [ADDRESS]
   ADDRESS, or at the current address if ADDRESS is not given.  Blocks
   are listed starting at the inner global block out to the most inner
   block.
+
+maintenance frame-unwinder disable [-all | -name NAME | [-class] CLASS]
+maintenance frame-unwinder enable [-all | -name NAME | [-class] CLASS]
+  Enable or disable frame unwinders.  This is only meant to be used when
+  testing unwinders themselves, and you want to ensure that a fallback
+  algorithm won't obscure a regression.  GDB is not expected to behave
+  well if you try to execute the inferior with unwinders disabled.
 
 info missing-objfile-handlers
   List all the registered missing-objfile handlers.
@@ -149,6 +279,20 @@ maintenance print remote-registers
   which registers were included in the last stop reply packet received by
   GDB.
 
+mainenance info frame-unwinders
+  Add a CLASS column to the output.  This class is a somewhat arbitrary
+  grouping of unwinders, based on which area of GDB adds the unwinder.
+  Also add an ENABLED column, that will show if the unwinder is enabled
+  or not.
+
+maintenance set dwarf unwinders (on|off)
+  This command has been removed because the same functionality can be
+  achieved with maint frame-unwinder (enable|disable) DEBUGINFO.
+
+maintenance show dwarf unwinders
+  This command has been removed since the functionality can be achieved
+  by checking the last column of maint info frame-unwinders.
+
 show configuration
   Now includes the version of GNU Readline library that GDB is using.
 
@@ -158,6 +302,12 @@ vFile:stat
   Return information about files on the remote system.  Like
   vFile:fstat but takes a filename rather than an open file
   descriptor.
+
+x addr,length
+  Given ADDR and LENGTH, fetch LENGTH units from the memory at address
+  ADDR and send the fetched data in binary format.  This packet is
+  equivalent to 'm', except that the data in the response are in
+  binary format.
 
 *** Changes in GDB 15
 
@@ -596,7 +746,7 @@ show tui mouse-events
      changed.
 
   ** New methods added to the gdb.PendingFrame class.  These methods
-     have the same behaviour as the corresponding methods on
+     have the same behavior as the corresponding methods on
      gdb.Frame.  The new methods are:
 
      - gdb.PendingFrame.name: Return the name for the frame's
@@ -1222,7 +1372,7 @@ winheight
 * MI changes
 
  ** The '-add-inferior' with no option flags now inherits the
-    connection of the current inferior, this restores the behaviour of
+    connection of the current inferior, this restores the behavior of
     GDB as it was prior to GDB 10.
 
  ** The '-add-inferior' command now accepts a '--no-connection'
@@ -2003,7 +2153,7 @@ set print frame-info [short-location|location|location-and-address
                         |source-and-location|source-line|auto]
 show print frame-info
   This controls what frame information is printed by the commands printing
-  a frame.  This setting will e.g. influence the behaviour of 'backtrace',
+  a frame.  This setting will e.g. influence the behavior of 'backtrace',
   'frame', 'stepi'.  The python frame filtering also respect this setting.
   The 'backtrace' '-frame-info' option can override this global setting.
 
@@ -8089,7 +8239,7 @@ full 64-bit address.  The command
 
 	set remoteaddresssize 32
 
-can be used to revert to the old behaviour.  For existing remote stubs
+can be used to revert to the old behavior.  For existing remote stubs
 the change should not be noticed, as the additional address information
 will be discarded.
 

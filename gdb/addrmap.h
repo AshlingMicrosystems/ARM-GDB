@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef ADDRMAP_H
-#define ADDRMAP_H
+#ifndef GDB_ADDRMAP_H
+#define GDB_ADDRMAP_H
 
 #include "gdbsupport/function-view.h"
 #include "gdbsupport/gdb_obstack.h"
@@ -225,7 +225,8 @@ private:
 void addrmap_dump (struct addrmap *map, struct ui_file *outfile,
 		   void *payload,
 		   gdb::function_view<void (struct ui_file *outfile,
+					    CORE_ADDR start_addr,
 					    const void *value)>
 		     annotate_value = nullptr);
 
-#endif /* ADDRMAP_H */
+#endif /* GDB_ADDRMAP_H */

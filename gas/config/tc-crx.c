@@ -1,5 +1,5 @@
 /* tc-crx.c -- Assembler code for the CRX CPU core.
-   Copyright (C) 2004-2024 Free Software Foundation, Inc.
+   Copyright (C) 2004-2025 Free Software Foundation, Inc.
 
    Contributed by Tomer Levi, NSC, Israel.
    Originally written for GAS 2.12 by Tomer Levi, NSC, Israel.
@@ -284,8 +284,8 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS * fixP)
 {
   arelent * reloc;
 
-  reloc = XNEW (arelent);
-  reloc->sym_ptr_ptr  = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixP->fx_addsy);
   reloc->address = fixP->fx_frag->fr_address + fixP->fx_where;
   reloc->addend = fixP->fx_offset;
@@ -318,8 +318,6 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS * fixP)
 	{
 	  /* We only resolve difference expressions in the same section.  */
 	  as_bad_subtract (fixP);
-	  free (reloc->sym_ptr_ptr);
-	  free (reloc);
 	  return NULL;
 	}
     }
@@ -723,7 +721,7 @@ set_operand (char *operand, ins * crx_ins)
       operandS = ++operandE;
 
       /* Set register base.  */
-      while ((*operandE != ',') && (! ISSPACE (*operandE)))
+      while ((*operandE != ',') && (! is_whitespace (*operandE)))
 	operandE++;
       *operandE++ = '\0';
       if ((cur_arg->r = get_register (operandS)) == nullregister)
@@ -731,7 +729,7 @@ set_operand (char *operand, ins * crx_ins)
 		operandS, ins_parse);
 
       /* Skip leading white space.  */
-      while (ISSPACE (*operandE))
+      while (is_whitespace (*operandE))
 	operandE++;
       operandS = operandE;
 
@@ -746,7 +744,7 @@ set_operand (char *operand, ins * crx_ins)
 		operandS, ins_parse);
 
       /* Skip leading white space.  */
-      while (ISSPACE (*operandE))
+      while (is_whitespace (*operandE))
 	operandE++;
       operandS = operandE;
 
@@ -885,7 +883,7 @@ parse_operands (ins * crx_ins, char *operands)
 	  continue;
 	}
 
-      if (*operandT == ' ')
+      if (is_whitespace (*operandT))
 	as_bad (_("Illegal operands (whitespace): `%s'"), ins_parse);
 
       if (*operandT == '(')
@@ -1032,7 +1030,7 @@ get_cinv_parameters (const char *operand)
 
   while (*++p != ']')
     {
-      if (*p == ',' || *p == ' ')
+      if (*p == ',' || is_whitespace (*p))
 	continue;
 
       if (*p == 'd')
@@ -1929,7 +1927,7 @@ md_assemble (char *op)
   reset_vars (op);
 
   /* Strip the mnemonic.  */
-  for (param = op; *param != 0 && !ISSPACE (*param); param++)
+  for (param = op; *param != 0 && !is_whitespace (*param); param++)
     ;
   c = *param;
   *param++ = '\0';

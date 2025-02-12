@@ -19,6 +19,7 @@
 
 #include <ctype.h>
 #include "auto-load.h"
+#include "gdbsupport/gdb_vecs.h"
 #include "progspace.h"
 #include "gdbsupport/gdb_regex.h"
 #include "ui-out.h"
@@ -476,19 +477,23 @@ file_is_auto_load_safe (const char *filename)
 
       gdb_printf (_("\
 To enable execution of this file add\n\
-\tadd-auto-load-safe-path %s\n\
+\t%p[add-auto-load-safe-path %s%p]\n\
 line to your configuration file \"%ps\".\n\
 To completely disable this security protection add\n\
-\tset auto-load safe-path /\n\
+\t%ps\n\
 line to your configuration file \"%ps\".\n\
 For more information about this security protection see the\n\
 \"Auto-loading safe path\" section in the GDB manual.  E.g., run from the shell:\n\
 \tinfo \"(gdb)Auto-loading safe path\"\n"),
-		       filename_real.get (),
-		       styled_string (file_name_style.style (),
-				      home_config.c_str ()),
-		       styled_string (file_name_style.style (),
-				      home_config.c_str ()));
+		  command_style.style ().ptr (),
+		  filename_real.get (),
+		  nullptr,
+		  styled_string (file_name_style.style (),
+				 home_config.c_str ()),
+		  styled_string (command_style.style (),
+				 "set auto-load safe-path /"),
+		  styled_string (file_name_style.style (),
+				 home_config.c_str ()));
       advice_printed = true;
     }
 
@@ -787,7 +792,7 @@ auto_load_objfile_script_1 (struct objfile *objfile, const char *realname,
       maybe_add_script_file (pspace_info, is_safe, debugfile, debugfile,
 			     language);
 
-      /* To preserve existing behaviour we don't check for whether the
+      /* To preserve existing behavior we don't check for whether the
 	 script was already in the table, and always load it.
 	 It's highly unlikely that we'd ever load it twice,
 	 and these scripts are required to be idempotent under multiple
@@ -1467,7 +1472,7 @@ info_auto_load_cmd (const char *args, int from_tty)
   struct ui_out *uiout = current_uiout;
 
   ui_out_emit_tuple tuple_emitter (uiout, "infolist");
-
+  const ui_file_style cmd_style = command_style.style ();
   for (list = *auto_load_info_cmdlist_get (); list != NULL; list = list->next)
     {
       ui_out_emit_tuple option_emitter (uiout, "option");
@@ -1475,7 +1480,7 @@ info_auto_load_cmd (const char *args, int from_tty)
       gdb_assert (!list->is_prefix ());
       gdb_assert (list->type == not_set_cmd);
 
-      uiout->field_string ("name", list->name);
+      uiout->field_string ("name", list->name, cmd_style);
       uiout->text (":  ");
       cmd_func (list, auto_load_info_scripts_pattern_nl, from_tty);
     }

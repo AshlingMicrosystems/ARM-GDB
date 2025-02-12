@@ -1,5 +1,5 @@
 /* tc-loongarch.h -- Header file for tc-loongarch.c.
-   Copyright (C) 2021-2024 Free Software Foundation, Inc.
+   Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Loongson Ltd.
 
    This file is part of GAS.
@@ -124,12 +124,14 @@ extern int loongarch_force_relocation (struct fix *);
   loongarch_cfi_frame_initial_instructions
 extern void loongarch_cfi_frame_initial_instructions (void);
 
+#define tc_parse_to_dw2regnum tc_loongarch_parse_to_dw2regnum
+extern void tc_loongarch_parse_to_dw2regnum (expressionS *);
+
+extern int tc_loongarch_regname_to_dw2regnum (char *);
+
 #define tc_symbol_new_hook(sym) \
   if (0 == strcmp (sym->bsym->name, FAKE_LABEL_NAME)) \
     S_SET_OTHER (sym, STV_HIDDEN);
-
-#define tc_parse_to_dw2regnum tc_loongarch_parse_to_dw2regnum
-extern void tc_loongarch_parse_to_dw2regnum (expressionS *);
 
 extern void loongarch_pre_output_hook (void);
 #define md_pre_output_hook loongarch_pre_output_hook ()
@@ -137,7 +139,7 @@ extern void loongarch_pre_output_hook (void);
 
 #define SUB_SEGMENT_ALIGN(SEG, FRCHAIN) 0
 
-#define HANDLE_ALIGN(fragp) loongarch_handle_align (fragp)
+#define HANDLE_ALIGN(sec, fragp) loongarch_handle_align (fragp)
 extern void loongarch_handle_align (struct frag *);
 #define MAX_MEM_FOR_RS_ALIGN_CODE (3 + 4)
 

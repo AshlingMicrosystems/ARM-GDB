@@ -19,8 +19,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef DWARF2_FRAME_H
-#define DWARF2_FRAME_H 1
+#ifndef GDB_DWARF2_FRAME_H
+#define GDB_DWARF2_FRAME_H
 
 struct gdbarch;
 class frame_info_ptr;
@@ -198,12 +198,6 @@ struct dwarf2_frame_state
   bool armcc_cfa_offsets_reversed = false;
 };
 
-/* When this is true the DWARF frame unwinders can be used if they are
-   registered with the gdbarch.  Not all architectures can or do use the
-   DWARF unwinders.  Setting this to true on a target that does not
-   otherwise support the DWARF unwinders has no effect.  */
-extern bool dwarf2_frame_unwinders_enabled_p;
-
 /* Set the architecture-specific register state initialization
    function for GDBARCH to INIT_REG.  */
 
@@ -294,4 +288,4 @@ extern void *dwarf2_frame_get_fn_data (const frame_info_ptr &this_frame,
 				       void **this_cache,
 				       fn_prev_register cookie);
 
-#endif /* dwarf2-frame.h */
+#endif /* GDB_DWARF2_FRAME_H */

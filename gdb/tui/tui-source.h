@@ -19,8 +19,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef TUI_TUI_SOURCE_H
-#define TUI_TUI_SOURCE_H
+#ifndef GDB_TUI_TUI_SOURCE_H
+#define GDB_TUI_TUI_SOURCE_H
 
 #include "gdbsupport/gdb-checked-static-cast.h"
 #include "tui/tui-data.h"
@@ -51,6 +51,10 @@ struct tui_source_window : public tui_source_window_base
   void erase_source_content () override
   {
     do_erase_source_content (_("[ No Source Available ]"));
+
+    /* The source window's title shows the filename, so no source available
+       means no title.  */
+    set_title ("");
   }
 
   void display_start_addr (struct gdbarch **gdbarch_p,
@@ -95,4 +99,4 @@ tui_src_win ()
   return gdb::checked_static_cast<tui_source_window *> (tui_win_list[SRC_WIN]);
 }
 
-#endif /* TUI_TUI_SOURCE_H */
+#endif /* GDB_TUI_TUI_SOURCE_H */

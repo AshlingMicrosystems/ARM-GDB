@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 dnl
-dnl   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+dnl   Copyright (C) 2012-2025 Free Software Foundation, Inc.
 dnl
 dnl This file is free software; you can redistribute it and/or modify
 dnl it under the terms of the GNU General Public License as published by
@@ -311,7 +311,6 @@ if test x${all_targets} = xfalse ; then
 	bfd_msp430_arch)	ta="$ta msp430-dis.lo msp430-decode.lo" ;;
 	bfd_nds32_arch)		ta="$ta nds32-asm.lo nds32-dis.lo" ;;
 	bfd_nfp_arch)		ta="$ta nfp-dis.lo" ;;
-	bfd_nios2_arch)		ta="$ta nios2-dis.lo nios2-opc.lo" ;;
 	bfd_ns32k_arch)		ta="$ta ns32k-dis.lo" ;;
 	bfd_or1k_arch)		ta="$ta or1k-asm.lo or1k-desc.lo or1k-dis.lo or1k-ibld.lo or1k-opc.lo" using_cgen=yes ;;
 	bfd_pdp11_arch)		ta="$ta pdp11-dis.lo pdp11-opc.lo" ;;

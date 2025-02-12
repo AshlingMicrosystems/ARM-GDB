@@ -1,5 +1,5 @@
 /* TI C6X assembler.
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
    Contributed by Joseph Myers <joseph@codesourcery.com>
    		  Bernd Schmidt  <bernds@codesourcery.com>
 
@@ -489,7 +489,8 @@ s_tic6x_arch (int ignored ATTRIBUTE_UNUSED)
   char *arch;
 
   arch = input_line_pointer;
-  while (*input_line_pointer && !ISSPACE (*input_line_pointer))
+  while (!is_end_of_stmt (*input_line_pointer)
+	 && !is_whitespace (*input_line_pointer))
     input_line_pointer++;
   c = *input_line_pointer;
   *input_line_pointer = 0;
@@ -786,7 +787,6 @@ md_begin (void)
   scom_section.name           = ".scommon";
   scom_section.output_section = & scom_section;
   scom_section.symbol         = & scom_symbol;
-  scom_section.symbol_ptr_ptr = & scom_section.symbol;
   scom_symbol                 = * bfd_com_section_ptr->symbol;
   scom_symbol.name            = ".scommon";
   scom_symbol.section         = & scom_section;
@@ -1181,7 +1181,7 @@ typedef struct
   } value;
 } tic6x_operand;
 
-#define skip_whitespace(str)  do { if (*(str) == ' ') ++(str); } while (0)
+#define skip_whitespace(str)  do { if (is_whitespace (*(str))) ++(str); } while (0)
 
 /* Parse a register operand, or part of an operand, starting at *P.
    If syntactically OK (including that the number is in the range 0 to
@@ -3149,7 +3149,7 @@ md_assemble (char *str)
   char *output;
 
   p = str;
-  while (*p && !is_end_of_line[(unsigned char) *p] && *p != ' ')
+  while (!is_end_of_stmt (*p) && !is_whitespace (*p))
     p++;
 
   /* This function should only have been called when there is actually
@@ -3209,10 +3209,10 @@ md_assemble (char *str)
 
       if (good_func_unit)
 	{
-	  if (p[3] == ' ' || is_end_of_line[(unsigned char) p[3]])
+	  if (is_whitespace (p[3]) || is_end_of_stmt (p[3]))
 	    p += 3;
 	  else if ((p[3] == 'x' || p[3] == 'X')
-		   && (p[4] == ' ' || is_end_of_line[(unsigned char) p[4]]))
+		   && (is_whitespace (p[4]) || is_end_of_stmt (p[4])))
 	    {
 	      maybe_cross = 1;
 	      p += 4;
@@ -3220,7 +3220,7 @@ md_assemble (char *str)
 	  else if (maybe_base == tic6x_func_unit_d
 		   && (p[3] == 't' || p[3] == 'T')
 		   && (p[4] == '1' || p[4] == '2')
-		   && (p[5] == ' ' || is_end_of_line[(unsigned char) p[5]]))
+		   && (is_whitespace (p[5]) || is_end_of_stmt (p[5])))
 	    {
 	      maybe_data_side = p[4] - '0';
 	      p += 5;
@@ -4501,8 +4501,8 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixp)
   asymbol *symbol;
   bfd_reloc_code_real_type r_type;
 
-  reloc = XNEW (arelent);
-  reloc->sym_ptr_ptr = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   symbol = symbol_get_bfdsym (fixp->fx_addsy);
   *reloc->sym_ptr_ptr = symbol;
   reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;

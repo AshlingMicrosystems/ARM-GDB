@@ -1,5 +1,5 @@
 /* Support for the generic parts of COFF, for BFD.
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
    Written by Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -307,7 +307,6 @@ coff_real_object_p (bfd *abfd,
   flagword oflags = abfd->flags;
   bfd_vma ostart = bfd_get_start_address (abfd);
   void * tdata;
-  void * tdata_save;
   bfd_size_type readsize;	/* Length of file_info.  */
   unsigned int scnhsz;
   char *external_sections;
@@ -336,7 +335,6 @@ coff_real_object_p (bfd *abfd,
 
   /* Set up the tdata area.  ECOFF uses its own routine, and overrides
      abfd->flags.  */
-  tdata_save = abfd->tdata.any;
   tdata = bfd_coff_mkobject_hook (abfd, (void *) internal_f, (void *) internal_a);
   if (tdata == NULL)
     goto fail2;
@@ -375,7 +373,6 @@ coff_real_object_p (bfd *abfd,
   _bfd_coff_free_symbols (abfd);
   bfd_release (abfd, tdata);
  fail2:
-  abfd->tdata.any = tdata_save;
   abfd->flags = oflags;
   abfd->start_address = ostart;
   return NULL;
@@ -3298,8 +3295,17 @@ _bfd_coff_free_cached_info (bfd *abfd)
 	 Do not clear the keep_syms and keep_strings flags.
 	 These may have been set by pe_ILF_build_a_bfd() indicating
 	 that the syms and strings pointers are not to be freed.  */
-      if (!_bfd_coff_free_symbols (abfd))
-	return false;
+      _bfd_coff_free_symbols (abfd);
+
+      /* Free raw syms, and any other data bfd_alloc'd after raw syms
+	 are read.  */
+      if (!obj_coff_keep_raw_syms (abfd) && obj_raw_syments (abfd))
+	{
+	  bfd_release (abfd, obj_raw_syments (abfd));
+	  obj_raw_syments (abfd) = NULL;
+	  obj_symbols (abfd) = NULL;
+	  obj_convert (abfd) = NULL;
+	}
     }
 
   return _bfd_generic_bfd_free_cached_info (abfd);

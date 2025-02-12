@@ -33,6 +33,7 @@
 #include "gdbsupport/underlying.h"
 #include "gdbarch.h"
 #include "objfiles.h"
+#include "extract-store-integer.h"
 
 /* This holds gdbarch-specific types used by the DWARF expression
    evaluator.  See comments in execute_stack_op.  */
@@ -211,14 +212,33 @@ rw_pieced_value (value *v, value *from, bool check_optimized)
 	    ULONGEST reg_bits = 8 * register_size (arch, gdb_regnum);
 	    int optim, unavail;
 
-	    if (gdbarch_byte_order (arch) == BFD_ENDIAN_BIG
-		&& p->offset + p->size < reg_bits)
+	    if (p->offset + p->size < reg_bits)
 	      {
-		/* Big-endian, and we want less than full size.  */
-		bits_to_skip += reg_bits - (p->offset + p->size);
+		/* We want less than full size.  */
+
+		if (p->op == DW_OP_piece)
+		  {
+		    gdb_assert (p->offset == 0);
+
+		    /* If the piece is located in a register, but does not
+		       occupy the entire register, the placement of the piece
+		       within that register is defined by the ABI. */
+		    bits_to_skip
+		      += 8 * gdbarch_dwarf2_reg_piece_offset (arch, gdb_regnum,
+							      p->size / 8);
+		  }
+		else if (p->op == DW_OP_bit_piece)
+		  {
+		    /* If the location is a register, the offset is from the
+		       least significant bit end of the register.  */
+		    if (gdbarch_byte_order (arch) == BFD_ENDIAN_BIG)
+		      bits_to_skip += reg_bits - (p->offset + p->size);
+		    else
+		      bits_to_skip += p->offset;
+		  }
+		else
+		  error (_("Don't know how to get part of implicit pointer"));
 	      }
-	    else
-	      bits_to_skip += p->offset;
 
 	    this_size = bits_to_bytes (bits_to_skip, this_size_bits);
 	    buffer.resize (this_size);
@@ -1198,13 +1218,15 @@ dwarf_expr_context::stack_empty_p () const
 
 /* Add a new piece to the dwarf_expr_context's piece list.  */
 void
-dwarf_expr_context::add_piece (ULONGEST size, ULONGEST offset)
+dwarf_expr_context::add_piece (ULONGEST size, ULONGEST offset,
+			       enum dwarf_location_atom op)
 {
   dwarf_expr_piece &p = this->m_pieces.emplace_back ();
 
   p.location = this->m_location;
   p.size = size;
   p.offset = offset;
+  p.op = op;
 
   if (p.location == DWARF_VALUE_LITERAL)
     {
@@ -2170,7 +2192,7 @@ dwarf_expr_context::execute_stack_op (const gdb_byte *op_ptr,
 
 	    /* Record the piece.  */
 	    op_ptr = safe_read_uleb128 (op_ptr, op_end, &size);
-	    add_piece (8 * size, 0);
+	    add_piece (8 * size, 0, op);
 
 	    /* Pop off the address/regnum, and reset the location
 	       type.  */
@@ -2188,7 +2210,7 @@ dwarf_expr_context::execute_stack_op (const gdb_byte *op_ptr,
 	    /* Record the piece.  */
 	    op_ptr = safe_read_uleb128 (op_ptr, op_end, &size);
 	    op_ptr = safe_read_uleb128 (op_ptr, op_end, &uleb_offset);
-	    add_piece (size, uleb_offset);
+	    add_piece (size, uleb_offset, op);
 
 	    /* Pop off the address/regnum, and reset the location
 	       type.  */
@@ -2390,7 +2412,7 @@ dwarf_expr_context::execute_stack_op (const gdb_byte *op_ptr,
      pointer, then make a pieced value.  This is ok because we can't
      have implicit pointers in contexts where pieces are invalid.  */
   if (this->m_location == DWARF_VALUE_IMPLICIT_POINTER)
-    add_piece (8 * this->m_addr_size, 0);
+    add_piece (8 * this->m_addr_size, 0, DW_OP_implicit_pointer);
 
   this->m_recursion_depth--;
   gdb_assert (this->m_recursion_depth >= 0);

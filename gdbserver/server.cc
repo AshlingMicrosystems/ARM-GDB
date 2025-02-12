@@ -50,6 +50,7 @@
 #include "gdbsupport/gdb_select.h"
 #include "gdbsupport/scoped_restore.h"
 #include "gdbsupport/search.h"
+#include "gdbsupport/gdb_argv_vec.h"
 
 /* PBUFSIZ must also be at least as big as IPA_CMD_BUF_SIZE, because
    the client state data is passed directly to some agent
@@ -121,7 +122,11 @@ private:
   /* The program name, adjusted if needed.  */
   std::string m_path;
 } program_path;
-static std::vector<char *> program_args;
+
+/* All program arguments are merged into a single string.  */
+
+static std::string program_args;
+
 static std::string wrapper_argv;
 
 /* The PID of the originally created or attached inferior.  Used to
@@ -394,7 +399,7 @@ write_qxfer_response (char *buf, const gdb_byte *data, int len, int is_more)
 /* Handle btrace enabling in BTS format.  */
 
 static void
-handle_btrace_enable_bts (struct thread_info *thread)
+handle_btrace_enable_bts (thread_info *thread)
 {
   if (thread->btrace != NULL)
     error (_("Btrace already enabled."));
@@ -406,7 +411,7 @@ handle_btrace_enable_bts (struct thread_info *thread)
 /* Handle btrace enabling in Intel Processor Trace format.  */
 
 static void
-handle_btrace_enable_pt (struct thread_info *thread)
+handle_btrace_enable_pt (thread_info *thread)
 {
   if (thread->btrace != NULL)
     error (_("Btrace already enabled."));
@@ -418,7 +423,7 @@ handle_btrace_enable_pt (struct thread_info *thread)
 /* Handle btrace disabling.  */
 
 static void
-handle_btrace_disable (struct thread_info *thread)
+handle_btrace_disable (thread_info *thread)
 {
 
   if (thread->btrace == NULL)
@@ -436,7 +441,7 @@ static int
 handle_btrace_general_set (char *own_buf)
 {
   client_state &cs = get_client_state ();
-  struct thread_info *thread;
+  thread_info *thread;
   char *op;
 
   if (!startswith (own_buf, "Qbtrace:"))
@@ -485,7 +490,7 @@ static int
 handle_btrace_conf_general_set (char *own_buf)
 {
   client_state &cs = get_client_state ();
-  struct thread_info *thread;
+  thread_info *thread;
   char *op;
 
   if (!startswith (own_buf, "Qbtrace-conf:"))
@@ -1544,7 +1549,7 @@ parse_debug_options (const char *options)
   gdb_assert (options != nullptr);
 
   /* Empty options means the "default" set.  This exists mostly for
-     backwards compatibility with gdbserver's legacy behaviour.  */
+     backwards compatibility with gdbserver's legacy behavior.  */
   if (*options == '\0')
     options = "+threads";
 
@@ -1965,29 +1970,6 @@ handle_qxfer_siginfo (const char *annex,
   return the_target->qxfer_siginfo (annex, readbuf, writebuf, offset, len);
 }
 
-/* Handle qXfer:statictrace:read.  */
-
-static int
-handle_qxfer_statictrace (const char *annex,
-			  gdb_byte *readbuf, const gdb_byte *writebuf,
-			  ULONGEST offset, LONGEST len)
-{
-  client_state &cs = get_client_state ();
-  ULONGEST nbytes;
-
-  if (writebuf != NULL)
-    return -2;
-
-  if (annex[0] != '\0' || current_thread == NULL 
-      || cs.current_traceframe == -1)
-    return -1;
-
-  if (traceframe_read_sdata (cs.current_traceframe, offset,
-			     readbuf, len, &nbytes))
-    return -1;
-  return nbytes;
-}
-
 /* Helper for handle_qxfer_threads_proper.
    Emit the XML to describe the thread of INF.  */
 
@@ -2169,7 +2151,7 @@ handle_qxfer_btrace (const char *annex,
 {
   client_state &cs = get_client_state ();
   static std::string cache;
-  struct thread_info *thread;
+  thread_info *thread;
   enum btrace_read_type type;
   int result;
 
@@ -2250,7 +2232,7 @@ handle_qxfer_btrace_conf (const char *annex,
 {
   client_state &cs = get_client_state ();
   static std::string cache;
-  struct thread_info *thread;
+  thread_info *thread;
   int result;
 
   if (writebuf != NULL)
@@ -2324,7 +2306,6 @@ static const struct qxfer qxfer_packets[] =
     { "libraries-svr4", handle_qxfer_libraries_svr4 },
     { "osdata", handle_qxfer_osdata },
     { "siginfo", handle_qxfer_siginfo },
-    { "statictrace", handle_qxfer_statictrace },
     { "threads", handle_qxfer_threads },
     { "traceframe-info", handle_qxfer_traceframe_info },
   };
@@ -2777,7 +2758,7 @@ handle_query (char *own_buf, int packet_len, int *new_packet_len_p)
 	       "PacketSize=%x;QPassSignals+;QProgramSignals+;"
 	       "QStartupWithShell+;QEnvironmentHexEncoded+;"
 	       "QEnvironmentReset+;QEnvironmentUnset+;"
-	       "QSetWorkingDir+",
+	       "QSetWorkingDir+;binary-upload+",
 	       PBUFSIZ - 1);
 
       if (target_supports_catch_syscall ())
@@ -2842,9 +2823,7 @@ handle_query (char *own_buf, int packet_len, int *new_packet_len_p)
 	  strcat (own_buf, ";DisconnectedTracing+");
 	  if (gdb_supports_qRelocInsn && target_supports_fast_tracepoints ())
 	    strcat (own_buf, ";FastTracepoints+");
-	  strcat (own_buf, ";StaticTracepoints+");
 	  strcat (own_buf, ";InstallInTrace+");
-	  strcat (own_buf, ";qXfer:statictrace:read+");
 	  strcat (own_buf, ";qXfer:traceframe-info:read+");
 	  strcat (own_buf, ";EnableDisableTracepoints+");
 	  strcat (own_buf, ";QTBuffer:size+");
@@ -2939,7 +2918,7 @@ handle_query (char *own_buf, int packet_len, int *new_packet_len_p)
 	err = 1;
       else
 	{
-	  struct thread_info *thread = find_thread_ptid (ptid);
+	  thread_info *thread = find_thread_ptid (ptid);
 
 	  if (thread == NULL)
 	    err = 2;
@@ -3117,7 +3096,7 @@ static void resume (struct thread_resume *actions, size_t n);
 
 /* The callback that is passed to visit_actioned_threads.  */
 typedef int (visit_actioned_threads_callback_ftype)
-  (const struct thread_resume *, struct thread_info *);
+  (const struct thread_resume *, thread_info *);
 
 /* Call CALLBACK for any thread to which ACTIONS applies to.  Returns
    true if CALLBACK returns true.  Returns false if no matching thread
@@ -3153,7 +3132,7 @@ visit_actioned_threads (thread_info *thread,
 
 static int
 handle_pending_status (const struct thread_resume *resumption,
-		       struct thread_info *thread)
+		       thread_info *thread)
 {
   client_state &cs = get_client_state ();
   if (thread->status_pending_p)
@@ -3426,7 +3405,7 @@ handle_v_run (char *own_buf)
 {
   client_state &cs = get_client_state ();
   char *p, *next_p;
-  std::vector<char *> new_argv;
+  gdb::argv_vec new_argv;
   gdb::unique_xmalloc_ptr<char> new_program_name;
   int i;
 
@@ -3457,7 +3436,6 @@ handle_v_run (char *own_buf)
 	  if (arg == nullptr)
 	    {
 	      write_enn (own_buf);
-	      free_vector_argv (new_argv);
 	      return;
 	    }
 
@@ -3477,16 +3455,13 @@ handle_v_run (char *own_buf)
       if (program_path.get () == nullptr)
 	{
 	  write_enn (own_buf);
-	  free_vector_argv (new_argv);
 	  return;
 	}
     }
   else
     program_path.set (new_program_name.get ());
 
-  /* Free the old argv and install the new one.  */
-  free_vector_argv (program_args);
-  program_args = new_argv;
+  program_args = construct_inferior_arguments (new_argv.get ());
 
   try
     {
@@ -3810,7 +3785,7 @@ handle_status (char *own_buf)
 
       if (thread != NULL)
 	{
-	  struct thread_info *tp = (struct thread_info *) thread;
+	  thread_info *tp = (thread_info *) thread;
 
 	  /* We're reporting this event, so it's no longer
 	     pending.  */
@@ -4372,12 +4347,11 @@ captured_main (int argc, char *argv[])
 
   if (pid == 0 && *next_arg != NULL)
     {
-      int i, n;
-
-      n = argc - (next_arg - argv);
       program_path.set (next_arg[0]);
-      for (i = 1; i < n; i++)
-	program_args.push_back (xstrdup (next_arg[i]));
+
+      int n = argc - (next_arg - argv);
+      program_args
+	= construct_inferior_arguments ({&next_arg[1], &next_arg[n]});
 
       /* Wait till we are at first instruction in program.  */
       target_create_inferior (program_path.get (), program_args);
@@ -4703,15 +4677,13 @@ process_serial_event (void)
       require_running_or_break (cs.own_buf);
       if (cs.current_traceframe >= 0)
 	{
-	  struct regcache *regcache
-	    = new_register_cache (current_target_desc ());
+	  regcache a_regcache (current_target_desc ());
 
 	  if (fetch_traceframe_registers (cs.current_traceframe,
-					  regcache, -1) == 0)
-	    registers_to_string (regcache, cs.own_buf);
+					  &a_regcache, -1) == 0)
+	    registers_to_string (&a_regcache, cs.own_buf);
 	  else
 	    write_enn (cs.own_buf);
-	  free_register_cache (regcache);
 	}
       else
 	{
@@ -4721,7 +4693,7 @@ process_serial_event (void)
 	    write_enn (cs.own_buf);
 	  else
 	    {
-	      regcache = get_thread_regcache (current_thread, 1);
+	      regcache = get_thread_regcache (current_thread);
 	      registers_to_string (regcache, cs.own_buf);
 	    }
 	}
@@ -4738,7 +4710,7 @@ process_serial_event (void)
 	    write_enn (cs.own_buf);
 	  else
 	    {
-	      regcache = get_thread_regcache (current_thread, 1);
+	      regcache = get_thread_regcache (current_thread);
 	      registers_from_string (regcache, &cs.own_buf[1]);
 	      write_ok (cs.own_buf);
 	    }
@@ -4762,6 +4734,35 @@ process_serial_event (void)
 	write_ok (cs.own_buf);
       else
 	write_enn (cs.own_buf);
+      break;
+    case 'x':
+      {
+	require_running_or_break (cs.own_buf);
+	decode_x_packet (&cs.own_buf[1], &mem_addr, &len);
+	int res = gdb_read_memory (mem_addr, mem_buf, len);
+	if (res < 0)
+	  write_enn (cs.own_buf);
+	else
+	  {
+	    gdb_byte *buffer = (gdb_byte *) cs.own_buf;
+	    *buffer++ = 'b';
+
+	    int out_len_units;
+	    new_packet_len = remote_escape_output (mem_buf, res, 1,
+						   buffer,
+						   &out_len_units,
+						   PBUFSIZ);
+	    new_packet_len++; /* For the 'b' marker.  */
+
+	    if (out_len_units != res)
+	      {
+		write_enn (cs.own_buf);
+		new_packet_len = -1;
+	      }
+	    else
+	      suppress_next_putpkt_log ();
+	  }
+      }
       break;
     case 'X':
       require_running_or_break (cs.own_buf);

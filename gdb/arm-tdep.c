@@ -588,7 +588,7 @@ static CORE_ADDR arm_analyze_prologue
   (struct gdbarch *gdbarch, CORE_ADDR prologue_start, CORE_ADDR prologue_end,
    struct arm_prologue_cache *cache, const arm_instruction_reader &insn_reader);
 
-/* Architecture version for displaced stepping.  This effects the behaviour of
+/* Architecture version for displaced stepping.  This effects the behavior of
    certain instructions, and really should not be hard-wired.  */
 
 #define DISPLACED_STEPPING_ARCH_VERSION		5
@@ -2466,15 +2466,16 @@ arm_prologue_prev_register (const frame_info_ptr &this_frame,
 				       prev_regnum);
 }
 
-static frame_unwind arm_prologue_unwind = {
+static const frame_unwind_legacy arm_prologue_unwind (
   "arm prologue",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   arm_prologue_unwind_stop_reason,
   arm_prologue_this_id,
   arm_prologue_prev_register,
   NULL,
   default_frame_sniffer
-};
+);
 
 /* Maintain a list of ARM exception table entries per objfile, similar to the
    list of mapping symbols.  We only cache entries for standard ARM-defined
@@ -3185,15 +3186,16 @@ arm_exidx_unwind_sniffer (const struct frame_unwind *self,
   return 1;
 }
 
-struct frame_unwind arm_exidx_unwind = {
+struct frame_unwind_legacy arm_exidx_unwind (
   "arm exidx",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   default_frame_unwind_stop_reason,
   arm_prologue_this_id,
   arm_prologue_prev_register,
   NULL,
   arm_exidx_unwind_sniffer
-};
+);
 
 static struct arm_prologue_cache *
 arm_make_epilogue_frame_cache (const frame_info_ptr &this_frame)
@@ -3294,16 +3296,16 @@ arm_epilogue_frame_sniffer (const struct frame_unwind *self,
 
 /* Frame unwinder from epilogue.  */
 
-static const struct frame_unwind arm_epilogue_frame_unwind =
-{
+static const struct frame_unwind_legacy arm_epilogue_frame_unwind (
   "arm epilogue",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   default_frame_unwind_stop_reason,
   arm_epilogue_frame_this_id,
   arm_epilogue_frame_prev_register,
   NULL,
-  arm_epilogue_frame_sniffer,
-};
+  arm_epilogue_frame_sniffer
+);
 
 /* Recognize GCC's trampoline for thumb call-indirect.  If we are in a
    trampoline, return the target PC.  Otherwise return 0.
@@ -3424,15 +3426,16 @@ arm_stub_unwind_sniffer (const struct frame_unwind *self,
   return 0;
 }
 
-struct frame_unwind arm_stub_unwind = {
+struct frame_unwind_legacy arm_stub_unwind (
   "arm stub",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   default_frame_unwind_stop_reason,
   arm_stub_this_id,
   arm_prologue_prev_register,
   NULL,
   arm_stub_unwind_sniffer
-};
+);
 
 /* Put here the code to store, into CACHE->saved_regs, the addresses
    of the saved registers of frame described by THIS_FRAME.  CACHE is
@@ -3949,16 +3952,16 @@ arm_m_exception_unwind_sniffer (const struct frame_unwind *self,
 /* Frame unwinder for M-profile exceptions (EXC_RETURN on stack),
    lockup and secure/nonsecure interstate function calls (FNC_RETURN).  */
 
-struct frame_unwind arm_m_exception_unwind =
-{
+struct frame_unwind_legacy arm_m_exception_unwind (
   "arm m exception lockup sec_fnc",
   SIGTRAMP_FRAME,
+  FRAME_UNWIND_ARCH,
   arm_m_exception_frame_unwind_stop_reason,
   arm_m_exception_this_id,
   arm_m_exception_prev_register,
   NULL,
   arm_m_exception_unwind_sniffer
-};
+);
 
 static CORE_ADDR
 arm_normal_frame_base (const frame_info_ptr &this_frame, void **this_cache)
@@ -5574,7 +5577,7 @@ bx_write_pc (struct regcache *regs, ULONGEST val)
     }
   else
     {
-      /* Unpredictable behaviour.  Try to do something sensible (switch to ARM
+      /* Unpredictable behavior.  Try to do something sensible (switch to ARM
 	  mode, align dest to 4 bytes).  */
       warning (_("Single-stepping BX to non-word-aligned ARM instruction."));
       regcache_cooked_write_unsigned (regs, ARM_PS_REGNUM, ps & ~t_bit);
@@ -6666,7 +6669,7 @@ install_load_store (struct gdbarch *gdbarch, struct regcache *regs,
      Otherwise we don't know what value to write for PC, since the offset is
      architecture-dependent (sometimes PC+8, sometimes PC+12).  More details
      of this can be found in Section "Saving from r15" in
-     http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0204g/Cihbjifh.html */
+     https://developer.arm.com/documentation/dui0204/g/ */
 
   dsc->cleanup = load ? &cleanup_load : &cleanup_store;
 }
@@ -8776,7 +8779,7 @@ gdb_print_insn_arm (bfd_vma memaddr, disassemble_info *info)
    undefined instruction trap.  ARM7TDMI is nominally ARMv4T, but does
    not in fact add the new instructions.  The new undefined
    instructions in ARMv4 are all instructions that had no defined
-   behaviour in earlier chips.  There is no guarantee that they will
+   behavior in earlier chips.  There is no guarantee that they will
    raise an exception, but may be treated as NOP's.  In practice, it
    may only safe to rely on instructions matching:
    
@@ -8983,7 +8986,7 @@ arm_extract_return_value (struct type *type, struct regcache *regs,
     }
   else
     {
-      /* For a structure or union the behaviour is as if the value had
+      /* For a structure or union the behavior is as if the value had
 	 been stored to word-aligned memory and then loaded into 
 	 registers with 32-bit load instruction(s).  */
       int len = type->length ();
@@ -9058,7 +9061,7 @@ arm_return_in_memory (struct gdbarch *gdbarch, struct type *type)
 	 fields are not addressable, and all addressable subfields of
 	 unions always start at offset zero.
 
-	 This function is based on the behaviour of GCC 2.95.1.
+	 This function is based on the behavior of GCC 2.95.1.
 	 See: gcc/arm.c: arm_return_in_memory() for details.
 
 	 Note: All versions of GCC before GCC 2.95.2 do not set up the
@@ -9213,7 +9216,7 @@ arm_store_return_value (struct type *type, struct regcache *regs,
     }
   else
     {
-      /* For a structure or union the behaviour is as if the value had
+      /* For a structure or union the behavior is as if the value had
 	 been stored to word-aligned memory and then loaded into 
 	 registers with 32-bit load instruction(s).  */
       int len = type->length ();

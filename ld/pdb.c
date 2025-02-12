@@ -1,5 +1,5 @@
 /* Support for generating PDB CodeView debugging files.
-   Copyright (C) 2022-2024 Free Software Foundation, Inc.
+   Copyright (C) 2022-2025 Free Software Foundation, Inc.
 
    This file is part of the GNU Binutils.
 
@@ -178,7 +178,7 @@ add_stream (bfd *pdb, const char *name, uint16_t *stream_num)
   if (!bfd_make_writable (stream))
     {
       bfd_close (stream);
-      return false;
+      return NULL;
     }
 
   if (!pdb->archive_head)

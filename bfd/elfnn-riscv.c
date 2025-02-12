@@ -1,5 +1,5 @@
 /* RISC-V-specific support for NN-bit ELF.
-   Copyright (C) 2011-2024 Free Software Foundation, Inc.
+   Copyright (C) 2011-2025 Free Software Foundation, Inc.
 
    Contributed by Andrew Waterman (andrew@sifive.com).
    Based on TILE-Gx and MIPS targets.
@@ -197,8 +197,7 @@ static bool
 elfNN_riscv_mkobject (bfd *abfd)
 {
   return bfd_elf_allocate_object (abfd,
-				  sizeof (struct _bfd_riscv_elf_obj_tdata),
-				  RISCV_ELF_DATA);
+				  sizeof (struct _bfd_riscv_elf_obj_tdata));
 }
 
 #include "elf/common.h"
@@ -503,8 +502,7 @@ riscv_elf_link_hash_table_create (bfd *abfd)
     return NULL;
 
   if (!_bfd_elf_link_hash_table_init (&ret->elf, abfd, link_hash_newfunc,
-				      sizeof (struct riscv_elf_link_hash_entry),
-				      RISCV_ELF_DATA))
+				      sizeof (struct riscv_elf_link_hash_entry)))
     {
       free (ret);
       return NULL;
@@ -1522,6 +1520,7 @@ riscv_elf_late_size_sections (bfd *output_bfd, struct bfd_link_info *info)
 	  BFD_ASSERT (s != NULL);
 	  s->size = strlen (ELFNN_DYNAMIC_INTERPRETER) + 1;
 	  s->contents = (unsigned char *) ELFNN_DYNAMIC_INTERPRETER;
+	  s->alloced = 1;
 	}
     }
 
@@ -1706,6 +1705,7 @@ riscv_elf_late_size_sections (bfd *output_bfd, struct bfd_link_info *info)
       s->contents = (bfd_byte *) bfd_zalloc (dynobj, s->size);
       if (s->contents == NULL)
 	return false;
+      s->alloced = 1;
     }
 
   /* Add dynamic entries.  */
@@ -3660,13 +3660,47 @@ riscv_elf_plt_sym_val (bfd_vma i, const asection *plt,
   return plt->vma + PLT_HEADER_SIZE + i * PLT_ENTRY_SIZE;
 }
 
+/* Used to decide how to sort relocs in an optimal manner for the
+   dynamic linker, before writing them out.  */
+
 static enum elf_reloc_type_class
-riscv_reloc_type_class (const struct bfd_link_info *info ATTRIBUTE_UNUSED,
+riscv_reloc_type_class (const struct bfd_link_info *info,
 			const asection *rel_sec ATTRIBUTE_UNUSED,
 			const Elf_Internal_Rela *rela)
 {
+  struct riscv_elf_link_hash_table *htab = riscv_elf_hash_table (info);
+
+  if (htab->elf.dynsym != NULL
+      && htab->elf.dynsym->contents != NULL)
+    {
+      /* Check relocation against STT_GNU_IFUNC symbol if there are
+	 dynamic symbols.  */
+      bfd *abfd = info->output_bfd;
+      const struct elf_backend_data *bed = get_elf_backend_data (abfd);
+      unsigned long r_symndx = ELFNN_R_SYM (rela->r_info);
+      if (r_symndx != STN_UNDEF)
+	{
+	  Elf_Internal_Sym sym;
+	  if (!bed->s->swap_symbol_in (abfd,
+				       (htab->elf.dynsym->contents
+					+ r_symndx * bed->s->sizeof_sym),
+				       0, &sym))
+	    {
+	      /* xgettext:c-format */
+	      _bfd_error_handler (_("%pB symbol number %lu references"
+				    " nonexistent SHT_SYMTAB_SHNDX section"),
+				  abfd, r_symndx);
+	      /* Ideally an error class should be returned here.  */
+	    }
+	  else if (ELF_ST_TYPE (sym.st_info) == STT_GNU_IFUNC)
+	    return reloc_class_ifunc;
+	}
+    }
+
   switch (ELFNN_R_TYPE (rela->r_info))
     {
+    case R_RISCV_IRELATIVE:
+      return reloc_class_ifunc;
     case R_RISCV_RELATIVE:
       return reloc_class_relative;
     case R_RISCV_JUMP_SLOT:
@@ -4071,20 +4105,9 @@ riscv_merge_attributes (bfd *ibfd, struct bfd_link_info *info)
 	    else if (in_priv_spec != PRIV_SPEC_CLASS_NONE
 		     && in_priv_spec != out_priv_spec)
 	      {
-		_bfd_error_handler
-		  (_("warning: %pB use privileged spec version %u.%u.%u but "
-		     "the output use version %u.%u.%u"),
-		   ibfd,
-		   in_attr[Tag_a].i,
-		   in_attr[Tag_b].i,
-		   in_attr[Tag_c].i,
-		   out_attr[Tag_a].i,
-		   out_attr[Tag_b].i,
-		   out_attr[Tag_c].i);
-
-		/* The privileged spec v1.9.1 can not be linked with others
-		   since the conflicts, so we plan to drop it in a year or
-		   two.  */
+		/* The abandoned privileged spec v1.9.1 can not be linked with
+		   others since the conflicts.  Keep the check since compatible
+		   issue.  */
 		if (in_priv_spec == PRIV_SPEC_CLASS_1P9P1
 		    || out_priv_spec == PRIV_SPEC_CLASS_1P9P1)
 		  {
@@ -4766,6 +4789,9 @@ _bfd_riscv_relax_lui (bfd *abfd,
   bfd_vma gp = htab->params->relax_gp
 	       ? riscv_global_pointer_value (link_info)
 	       : 0;
+  bfd_vma data_segment_alignment = link_info->relro
+				   ? ELF_MAXPAGESIZE + ELF_COMMONPAGESIZE
+				   : ELF_MAXPAGESIZE;
   int use_rvc = elf_elfheader (abfd)->e_flags & EF_RISCV_RVC;
 
   BFD_ASSERT (rel->r_offset + 4 <= sec->size);
@@ -4790,6 +4816,16 @@ _bfd_riscv_relax_lui (bfd *abfd,
 	      htab->max_alignment_for_gp = max_alignment;
 	    }
 	}
+
+      /* PR27566, for default linker script, if a symbol's value outsides the
+	 bounds of the defined section, then it may cross the data segment
+	 alignment, so we should reserve more size about MAXPAGESIZE and
+	 COMMONPAGESIZE, since the data segment alignment might move the
+	 section forward.  */
+      if (symval < sec_addr (sym_sec)
+	  || symval > (sec_addr (sym_sec) + sym_sec->size))
+	max_alignment = data_segment_alignment > max_alignment
+			? data_segment_alignment : max_alignment;
     }
 
   /* Is the reference in range of x0 or gp?
@@ -4834,8 +4870,7 @@ _bfd_riscv_relax_lui (bfd *abfd,
       && ELFNN_R_TYPE (rel->r_info) == R_RISCV_HI20
       && VALID_CITYPE_LUI_IMM (RISCV_CONST_HIGH_PART (symval))
       && VALID_CITYPE_LUI_IMM (RISCV_CONST_HIGH_PART (symval)
-			    + (link_info->relro ? 2 * ELF_MAXPAGESIZE
-			       : ELF_MAXPAGESIZE)))
+			       + data_segment_alignment))
     {
       /* Replace LUI with C.LUI if legal (i.e., rd != x0 and rd != x2/sp).  */
       bfd_vma lui = bfd_getl32 (contents + rel->r_offset);
@@ -4980,6 +5015,9 @@ _bfd_riscv_relax_pc (bfd *abfd ATTRIBUTE_UNUSED,
   bfd_vma gp = htab->params->relax_gp
 	       ? riscv_global_pointer_value (link_info)
 	       : 0;
+  bfd_vma data_segment_alignment = link_info->relro
+				   ? ELF_MAXPAGESIZE + ELF_COMMONPAGESIZE
+				   : ELF_MAXPAGESIZE;
 
   BFD_ASSERT (rel->r_offset + 4 <= sec->size);
 
@@ -5054,6 +5092,16 @@ _bfd_riscv_relax_pc (bfd *abfd ATTRIBUTE_UNUSED,
 	      htab->max_alignment_for_gp = max_alignment;
 	    }
 	}
+
+      /* PR27566, for default linker script, if a symbol's value outsides the
+	 bounds of the defined section, then it may cross the data segment
+	 alignment, so we should reserve more size about MAXPAGESIZE and
+	 COMMONPAGESIZE, since the data segment alignment might move the
+	 section forward.  */
+      if (symval < sec_addr (sym_sec)
+	  || symval > (sec_addr (sym_sec) + sym_sec->size))
+	max_alignment = data_segment_alignment > max_alignment
+			? data_segment_alignment : max_alignment;
     }
 
   /* Is the reference in range of x0 or gp?

@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef REGCACHE_H
-#define REGCACHE_H
+#ifndef GDB_REGCACHE_H
+#define GDB_REGCACHE_H
 
 #include "gdbsupport/array-view.h"
 #include "gdbsupport/common-regcache.h"
@@ -31,6 +31,7 @@ struct gdbarch;
 class thread_info;
 struct process_stratum_target;
 struct inferior;
+class ui_out;
 
 extern struct regcache *get_thread_regcache (process_stratum_target *target,
 					     ptid_t ptid);
@@ -177,10 +178,7 @@ using register_read_ftype
 struct cached_reg_t
 {
   int num;
-  gdb::unique_xmalloc_ptr<gdb_byte> data;
-
-  cached_reg_t () = default;
-  cached_reg_t (cached_reg_t &&rhs) = default;
+  gdb::byte_vector data;
 };
 
 /* Buffer of registers.  */
@@ -258,6 +256,9 @@ public:
 
   /* See gdbsupport/common-regcache.h.  */
   bool raw_compare (int regnum, const void *buf, int offset) const override;
+
+  /* See gdbsupport/common-regcache.h.  */
+  int register_size (int regnum) const override;
 
 protected:
   /* Assert on the range of REGNUM.  */
@@ -536,7 +537,7 @@ extern void registers_changed_thread (thread_info *thread);
 class register_dump
 {
 public:
-  void dump (ui_file *file);
+  void dump (ui_out *out, const char *name);
   virtual ~register_dump () = default;
 
 protected:
@@ -544,11 +545,16 @@ protected:
     : m_gdbarch (arch)
   {}
 
-  /* Dump the register REGNUM contents.  If REGNUM is -1, print the
-     header.  */
-  virtual void dump_reg (ui_file *file, int regnum) = 0;
+  /* Number of additional table headers.  */
+  virtual int num_additional_headers () = 0;
+
+  /* Add the additional headers to OUT.  */
+  virtual void additional_headers (ui_out *out) = 0;
+
+  /* Dump the register REGNUM contents.  */
+  virtual void dump_reg (ui_out *out, int regnum) = 0;
 
   gdbarch *m_gdbarch;
 };
 
-#endif /* REGCACHE_H */
+#endif /* GDB_REGCACHE_H */

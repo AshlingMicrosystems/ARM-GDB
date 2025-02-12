@@ -1,5 +1,5 @@
 /* tc-metag.c -- Assembler for the Imagination Technologies Meta.
-   Copyright (C) 2013-2024 Free Software Foundation, Inc.
+   Copyright (C) 2013-2025 Free Software Foundation, Inc.
    Contributed by Imagination Technologies Ltd.
 
    This file is part of GAS, the GNU Assembler.
@@ -41,7 +41,6 @@ static char mnemonic_chars[256];
 
 #define is_register_char(x) (register_chars[(unsigned char) x])
 #define is_mnemonic_char(x) (mnemonic_chars[(unsigned char) x])
-#define is_whitespace_char(x) (((x) == ' ') || ((x) == '\t'))
 #define is_space_char(x) ((x) == ' ')
 
 #define FPU_PREFIX_CHAR 'f'
@@ -221,7 +220,7 @@ skip_whitespace (const char *line)
 {
   const char *l = line;
 
-  if (is_whitespace_char (*l))
+  if (is_whitespace (*l))
     {
       l++;
     }
@@ -6052,7 +6051,7 @@ parse_prefix (const char *line, metag_insn *insn)
 	      /* Check this isn't a split condition beginning with L.  */
 	      l2 = parse_split_condition (l2, insn);
 
-	      if (l2 && is_whitespace_char (*l2))
+	      if (l2 && is_whitespace (*l2))
 		{
 		  l = l2;
 		}
@@ -6090,7 +6089,7 @@ parse_prefix (const char *line, metag_insn *insn)
 	      l++;
 	    }
 
-	  if (! is_whitespace_char (*l))
+	  if (! is_whitespace (*l))
 	    {
 	      l = parse_split_condition (l, insn);
 
@@ -6116,7 +6115,7 @@ parse_prefix (const char *line, metag_insn *insn)
 
 	  insn->dsp_width = DSP_WIDTH_SINGLE;
 
-	  while (!is_whitespace_char (*l))
+	  while (!is_whitespace (*l))
 	    {
 	      /* We have to check for split condition codes first
 		 because they are the longest strings to match,
@@ -6908,13 +6907,13 @@ metag_parse_name (char const * name, expressionS * exprP, enum expr_mode mode,
       /* If we have an absolute symbol or a
 	 reg, then we know its value now.  */
       segment = S_GET_SEGMENT (exprP->X_add_symbol);
-      if (mode != expr_defer && segment == absolute_section)
+      if (!expr_defer_p (mode) && segment == absolute_section)
 	{
 	  exprP->X_op = O_constant;
 	  exprP->X_add_number = S_GET_VALUE (exprP->X_add_symbol);
 	  exprP->X_add_symbol = NULL;
 	}
-      else if (mode != expr_defer && segment == reg_section)
+      else if (!expr_defer_p (mode) && segment == reg_section)
 	{
 	  exprP->X_op = O_register;
 	  exprP->X_add_number = S_GET_VALUE (exprP->X_add_symbol);
@@ -7001,10 +7000,10 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 {
   arelent *reloc;
 
-  reloc		      = XNEW (arelent);
-  reloc->sym_ptr_ptr  = XNEW (asymbol *);
+  reloc = notes_alloc (sizeof (arelent));
+  reloc->sym_ptr_ptr = notes_alloc (sizeof (asymbol *));
   *reloc->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_addsy);
-  reloc->address      = fixp->fx_frag->fr_address + fixp->fx_where;
+  reloc->address = fixp->fx_frag->fr_address + fixp->fx_where;
 
   reloc->addend = fixp->fx_offset;
   reloc->howto = bfd_reloc_type_lookup (stdoutput, fixp->fx_r_type);
@@ -7015,9 +7014,6 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 		    /* xgettext:c-format.  */
 		    _("reloc %d not supported by object file format"),
 		    (int) fixp->fx_r_type);
-
-      xfree (reloc);
-
       return NULL;
     }
 

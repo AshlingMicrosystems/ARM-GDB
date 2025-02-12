@@ -19,6 +19,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "cli/cli-cmds.h"
+#include "cli/cli-style.h"
 #include "displaced-stepping.h"
 #include "infrun.h"
 #include <ctype.h>
@@ -463,8 +464,10 @@ follow_fork_inferior (bool follow_child, bool detach_fork)
 	 back the terminal, effectively hanging the debug session.  */
       gdb_printf (gdb_stderr, _("\
 Can not resume the parent process over vfork in the foreground while\n\
-holding the child stopped.  Try \"set detach-on-fork\" or \
-\"set schedule-multiple\".\n"));
+holding the child stopped.  Try \"set %ps\" or \"%ps\".\n"),
+		  styled_string (command_style.style (), "set detach-on-fork"),
+		  styled_string (command_style.style (),
+				 "set schedule-multiple"));
       return true;
     }
 
@@ -1284,7 +1287,7 @@ follow_exec (ptid_t ptid, const char *exec_file_target)
   /* The user may have had the main thread held stopped in the
      previous image (e.g., schedlock on, or non-stop).  Release
      it now.  */
-  th->stop_requested = 0;
+  th->stop_requested = false;
 
   update_breakpoints_after_exec ();
 
@@ -1308,8 +1311,9 @@ follow_exec (ptid_t ptid, const char *exec_file_target)
      so that the user can specify a file manually before continuing.  */
   if (exec_file_host == nullptr)
     warning (_("Could not load symbols for executable %s.\n"
-	       "Do you need \"set sysroot\"?"),
-	     exec_file_target);
+	       "Do you need \"%ps\"?"),
+	     exec_file_target,
+	     styled_string (command_style.style (), "set sysroot"));
 
   /* Reset the shared library package.  This ensures that we get a
      shlib event when the child reaches "_start", at which point the
@@ -3087,7 +3091,7 @@ clear_proceed_status_thread (struct thread_info *tp)
   tp->control.step_stack_frame_id = null_frame_id;
   tp->control.step_over_calls = STEP_OVER_UNDEBUGGABLE;
   tp->control.step_start_function = nullptr;
-  tp->stop_requested = 0;
+  tp->stop_requested = false;
 
   tp->control.stop_step = 0;
 
@@ -4958,7 +4962,7 @@ adjust_pc_after_break (struct thread_info *thread,
      we would wrongly adjust the PC to 0x08000000, since there's a
      breakpoint at PC - 1.  We'd then report a hit on B1, although
      INSN1 hadn't been de-executed yet.  Doing nothing is the correct
-     behaviour.  */
+     behavior.  */
   if (execution_direction == EXEC_REVERSE)
     return;
 
@@ -5493,7 +5497,7 @@ handle_one (const wait_one_event &event)
       if (t == nullptr)
 	t = add_thread (event.target, event.ptid);
 
-      t->stop_requested = 0;
+      t->stop_requested = false;
       t->set_executing (false);
       t->set_resumed (false);
       t->control.may_range_step = 0;
@@ -5733,7 +5737,7 @@ stop_all_threads (const char *reason, inferior *inf)
 		      infrun_debug_printf ("  %s executing, need stop",
 					   t->ptid.to_string ().c_str ());
 		      target_stop (t->ptid);
-		      t->stop_requested = 1;
+		      t->stop_requested = true;
 		    }
 		  else
 		    {
@@ -10039,8 +10043,8 @@ info_signals_command (const char *signum_exp, int from_tty)
 	sig_print_info (oursig);
     }
 
-  gdb_printf (_("\nUse the \"handle\" command "
-		"to change these tables.\n"));
+  gdb_printf (_("\nUse the \"%ps\" command to change these tables.\n"),
+	      styled_string (command_style.style (), "handle"));
 }
 
 /* The $_siginfo convenience variable is a bit special.  We don't know

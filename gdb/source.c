@@ -17,6 +17,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "arch-utils.h"
+#include "gdbsupport/gdb_vecs.h"
 #include "symtab.h"
 #include "expression.h"
 #include "language.h"
@@ -758,7 +759,7 @@ prepare_path_for_appending (const char *path)
    using mode MODE in the calls to open.  You cannot use this function to
    create files (O_CREAT).
 
-   OPTS specifies the function behaviour in specific cases.
+   OPTS specifies the function behavior in specific cases.
 
    If OPF_TRY_CWD_FIRST, try to open ./STRING before searching PATH.
    (ie pretend the first element of PATH is ".").  This also indicates
@@ -949,7 +950,7 @@ done:
 }
 
 
-/* This is essentially a convenience, for clients that want the behaviour
+/* This is essentially a convenience, for clients that want the behavior
    of openp, using source_path, but that really don't want the file to be
    opened but want instead just to know what the full pathname is (as
    qualified against source_path).
@@ -1908,22 +1909,6 @@ source_lines_range::source_lines_range (int startline,
     }
 }
 
-/* Handle the "set source" base command.  */
-
-static void
-set_source (const char *arg, int from_tty)
-{
-  help_list (setsourcelist, "set source ", all_commands, gdb_stdout);
-}
-
-/* Handle the "show source" base command.  */
-
-static void
-show_source (const char *args, int from_tty)
-{
-  help_list (showsourcelist, "show source ", all_commands, gdb_stdout);
-}
-
 
 void _initialize_source ();
 void
@@ -2044,13 +2029,12 @@ By default, relative filenames are displayed."),
 			show_filename_display_string,
 			&setlist, &showlist);
 
-  add_prefix_cmd ("source", no_class, set_source,
-		  _("Generic command for setting how sources are handled."),
-		  &setsourcelist, 0, &setlist);
-
-  add_prefix_cmd ("source", no_class, show_source,
-		  _("Generic command for showing source settings."),
-		  &showsourcelist, 0, &showlist);
+  add_setshow_prefix_cmd
+    ("source", no_class,
+     _("Generic command for setting how sources are handled."),
+     _("Generic command for showing source settings."),
+     &setsourcelist, &showsourcelist,
+     &setlist, &showlist);
 
   add_setshow_boolean_cmd ("open", class_files, &source_open, _("\
 Set whether GDB should open source files."), _("\

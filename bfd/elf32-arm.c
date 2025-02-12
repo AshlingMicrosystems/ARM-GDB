@@ -1,5 +1,5 @@
 /* 32-bit ELF support for ARM
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -2630,6 +2630,8 @@ static const insn_sequence elf32_arm_stub_long_branch_thumb2_only_pure[] =
   THUMB32_MOVW (0xf2400c00),	     /* mov.w ip, R_ARM_MOVW_ABS_NC */
   THUMB32_MOVT (0xf2c00c00),	     /* movt  ip, R_ARM_MOVT_ABS << 16 */
   THUMB16_INSN (0x4760),	     /* bx   ip */
+  THUMB16_INSN (0xbf00),	     /* nop */
+  /* The nop is added to ensure alignment of following stubs in the section.  */
 };
 
 /* V4T Thumb -> Thumb long branch stub. Using the stack is not
@@ -3207,8 +3209,7 @@ struct elf_arm_obj_tdata
 static bool
 elf32_arm_mkobject (bfd *abfd)
 {
-  return bfd_elf_allocate_object (abfd, sizeof (struct elf_arm_obj_tdata),
-				  ARM_ELF_DATA);
+  return bfd_elf_allocate_object (abfd, sizeof (struct elf_arm_obj_tdata));
 }
 
 #define elf32_arm_hash_entry(ent) ((struct elf32_arm_link_hash_entry *)(ent))
@@ -4102,8 +4103,7 @@ elf32_arm_link_hash_table_create (bfd *abfd)
 
   if (!_bfd_elf_link_hash_table_init (& ret->root, abfd,
 				      elf32_arm_link_hash_newfunc,
-				      sizeof (struct elf32_arm_link_hash_entry),
-				      ARM_ELF_DATA))
+				      sizeof (struct elf32_arm_link_hash_entry)))
     {
       free (ret);
       return NULL;
@@ -7075,6 +7075,7 @@ elf32_arm_build_stubs (struct bfd_link_info *info)
       stub_sec->contents = (unsigned char *) bfd_zalloc (htab->stub_bfd, size);
       if (stub_sec->contents == NULL && size != 0)
 	return false;
+      stub_sec->alloced = 1;
 
       stub_sec->size = 0;
     }
@@ -7281,6 +7282,7 @@ arm_allocate_glue_section_space (bfd * abfd, bfd_size_type size, const char * na
 
   BFD_ASSERT (s->size == size);
   s->contents = contents;
+  s->alloced = 1;
 }
 
 bool
@@ -16825,6 +16827,7 @@ elf32_arm_late_size_sections (bfd * output_bfd ATTRIBUTE_UNUSED,
 	  BFD_ASSERT (s != NULL);
 	  s->size = sizeof ELF_DYNAMIC_INTERPRETER;
 	  s->contents = (unsigned char *) ELF_DYNAMIC_INTERPRETER;
+	  s->alloced = 1;
 	}
     }
 
@@ -17175,6 +17178,7 @@ elf32_arm_late_size_sections (bfd * output_bfd ATTRIBUTE_UNUSED,
       s->contents = (unsigned char *) bfd_zalloc (dynobj, s->size);
       if (s->contents == NULL)
 	return false;
+      s->alloced = 1;
     }
 
   return _bfd_elf_maybe_vxworks_add_dynamic_tags (output_bfd, info,
@@ -18535,16 +18539,10 @@ elf32_arm_filter_implib_symbols (bfd *abfd ATTRIBUTE_UNUSED,
 static bool
 elf32_arm_new_section_hook (bfd *abfd, asection *sec)
 {
-  if (!sec->used_by_bfd)
-    {
-      _arm_elf_section_data *sdata;
-      size_t amt = sizeof (*sdata);
-
-      sdata = (_arm_elf_section_data *) bfd_zalloc (abfd, amt);
-      if (sdata == NULL)
-	return false;
-      sec->used_by_bfd = sdata;
-    }
+  _arm_elf_section_data *sdata = bfd_zalloc (abfd, sizeof (*sdata));
+  if (sdata == NULL)
+    return false;
+  sec->used_by_bfd = sdata;
 
   return _bfd_elf_new_section_hook (abfd, sec);
 }

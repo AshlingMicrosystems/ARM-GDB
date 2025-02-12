@@ -1,6 +1,6 @@
 # gas target specific configuration file.  This is a -*- sh -*- file.
 #
-#   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+#   Copyright (C) 2012-2025 Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -346,8 +346,6 @@ case ${generic_target} in
 
   nds32-*-elf*)				fmt=elf ;;
   nds32-*-linux*)			fmt=elf em=linux ;;
-
-  nios2*-linux*)			fmt=elf em=linux ;;
 
   ns32k-pc532-mach*)			fmt=aout em=pc532mach ;;
   ns32k-pc532-ux*)			fmt=aout em=pc532mach ;;

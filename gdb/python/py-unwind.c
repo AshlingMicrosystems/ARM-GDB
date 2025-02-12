@@ -785,11 +785,35 @@ pending_framepy_level (PyObject *self, PyObject *args)
   return gdb_py_object_from_longest (level).release ();
 }
 
+/* Class for frame unwinders registered by the Python architecture callback.  */
+class frame_unwind_python : public frame_unwind
+{
+public:
+  frame_unwind_python (const struct frame_data *newarch)
+    : frame_unwind ("python", NORMAL_FRAME, FRAME_UNWIND_EXTENSION, newarch)
+  { }
+
+  /* No need to override stop_reason, we want the default.  */
+
+  int sniff (const frame_info_ptr &this_frame,
+	     void **this_prologue_cache) const override;
+
+  void this_id (const frame_info_ptr &this_frame, void **this_prologue_cache,
+		struct frame_id *id) const override;
+
+  struct value *prev_register (const frame_info_ptr &this_frame,
+			       void **this_prologue_cache,
+			       int regnum) const override;
+
+  void dealloc_cache (frame_info *self, void *this_cache) const override;
+};
+
 /* frame_unwind.this_id method.  */
 
-static void
-pyuw_this_id (const frame_info_ptr &this_frame, void **cache_ptr,
-	      struct frame_id *this_id)
+void
+frame_unwind_python::this_id (const frame_info_ptr &this_frame,
+			      void **cache_ptr,
+			      struct frame_id *this_id) const
 {
   *this_id = ((cached_frame_info *) *cache_ptr)->frame_id;
   pyuw_debug_printf ("frame_id: %s", this_id->to_string ().c_str ());
@@ -797,9 +821,9 @@ pyuw_this_id (const frame_info_ptr &this_frame, void **cache_ptr,
 
 /* frame_unwind.prev_register.  */
 
-static struct value *
-pyuw_prev_register (const frame_info_ptr &this_frame, void **cache_ptr,
-		    int regnum)
+struct value *
+frame_unwind_python::prev_register (const frame_info_ptr &this_frame,
+				    void **cache_ptr, int regnum) const
 {
   PYUW_SCOPED_DEBUG_ENTER_EXIT;
 
@@ -812,7 +836,7 @@ pyuw_prev_register (const frame_info_ptr &this_frame, void **cache_ptr,
   for (; reg_info < reg_info_end; ++reg_info)
     {
       if (regnum == reg_info->num)
-	return frame_unwind_got_bytes (this_frame, regnum, reg_info->data.get ());
+	return frame_unwind_got_bytes (this_frame, regnum, reg_info->data);
     }
 
   return frame_unwind_got_optimized (this_frame, regnum);
@@ -820,13 +844,13 @@ pyuw_prev_register (const frame_info_ptr &this_frame, void **cache_ptr,
 
 /* Frame sniffer dispatch.  */
 
-static int
-pyuw_sniffer (const struct frame_unwind *self, const frame_info_ptr &this_frame,
-	      void **cache_ptr)
+int
+frame_unwind_python::sniff (const frame_info_ptr &this_frame,
+			    void **cache_ptr) const
 {
   PYUW_SCOPED_DEBUG_ENTER_EXIT;
 
-  struct gdbarch *gdbarch = (struct gdbarch *) (self->unwind_data);
+  struct gdbarch *gdbarch = (struct gdbarch *) (this->unwind_data ());
   cached_frame_info *cached_frame;
 
   gdbpy_enter enter_py (gdbarch);
@@ -936,8 +960,9 @@ pyuw_sniffer (const struct frame_unwind *self, const frame_info_ptr &this_frame,
 
 	cached_reg_t *cached = new (&cached_frame->reg[i]) cached_reg_t ();
 	cached->num = reg->number;
-	cached->data.reset ((gdb_byte *) xmalloc (data_size));
-	memcpy (cached->data.get (), value->contents ().data (), data_size);
+	cached->data.resize (data_size);
+	gdb::array_view<const gdb_byte> contents = value->contents ();
+	cached->data.assign (contents.begin (), contents.end ());
       }
   }
 
@@ -947,8 +972,8 @@ pyuw_sniffer (const struct frame_unwind *self, const frame_info_ptr &this_frame,
 
 /* Frame cache release shim.  */
 
-static void
-pyuw_dealloc_cache (frame_info *this_frame, void *cache)
+void
+frame_unwind_python::dealloc_cache (frame_info *this_frame, void *cache) const
 {
   PYUW_SCOPED_DEBUG_ENTER_EXIT;
   cached_frame_info *cached_frame = (cached_frame_info *) cache;
@@ -980,16 +1005,9 @@ pyuw_on_new_gdbarch (gdbarch *newarch)
   if (!data->unwinder_registered)
     {
       struct frame_unwind *unwinder
-	  = GDBARCH_OBSTACK_ZALLOC (newarch, struct frame_unwind);
+	  = obstack_new<frame_unwind_python>
+	    (gdbarch_obstack (newarch), (const struct frame_data *) newarch);
 
-      unwinder->name = "python";
-      unwinder->type = NORMAL_FRAME;
-      unwinder->stop_reason = default_frame_unwind_stop_reason;
-      unwinder->this_id = pyuw_this_id;
-      unwinder->prev_register = pyuw_prev_register;
-      unwinder->unwind_data = (const struct frame_data *) newarch;
-      unwinder->sniffer = pyuw_sniffer;
-      unwinder->dealloc_cache = pyuw_dealloc_cache;
       frame_unwind_prepend_unwinder (newarch, unwinder);
       data->unwinder_registered = 1;
     }

@@ -1,5 +1,5 @@
 /* dw2gencfi.c - Support for generating Dwarf2 CFI information.
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
    Contributed by Michal Ludvig <mludvig@suse.cz>
 
    This file is part of GAS, the GNU Assembler.
@@ -406,9 +406,9 @@ static struct cie_entry *cie_root;
 static struct fde_entry *
 alloc_fde_entry (void)
 {
-  struct fde_entry *fde = XCNEW (struct fde_entry);
+  struct fde_entry *fde = notes_calloc (1, sizeof (*fde));
 
-  frchain_now->frch_cfi_data = XCNEW (struct frch_cfi_data);
+  frchain_now->frch_cfi_data = notes_calloc (1, sizeof (struct frch_cfi_data));
   frchain_now->frch_cfi_data->cur_fde_data = fde;
   *last_fde_data = fde;
   last_fde_data = &fde->next;
@@ -440,7 +440,7 @@ static struct fde_entry *last_fde;
 static struct cfi_insn_data *
 alloc_cfi_insn_data (void)
 {
-  struct cfi_insn_data *insn = XCNEW (struct cfi_insn_data);
+  struct cfi_insn_data *insn = notes_calloc (1, sizeof (*insn));
   struct fde_entry *cur_fde_data = frchain_now->frch_cfi_data->cur_fde_data;
 
   *cur_fde_data->last = insn;
@@ -465,7 +465,6 @@ void
 cfi_end_fde (symbolS *label)
 {
   frchain_now->frch_cfi_data->cur_fde_data->end_address = label;
-  free (frchain_now->frch_cfi_data);
   frchain_now->frch_cfi_data = NULL;
 }
 
@@ -559,12 +558,10 @@ cfi_add_advance_loc (symbolS *label)
 void
 cfi_add_label (const char *name)
 {
-  unsigned int len = strlen (name) + 1;
   struct cfi_insn_data *insn = alloc_cfi_insn_data ();
 
   insn->insn = CFI_label;
-  obstack_grow (&notes, name, len);
-  insn->u.sym_name = (char *) obstack_finish (&notes);
+  insn->u.sym_name = notes_strdup (name);
 }
 
 /* Add a DW_CFA_offset record to the CFI data.  */
@@ -658,7 +655,7 @@ cfi_add_CFA_remember_state (void)
 
   cfi_add_CFA_insn (DW_CFA_remember_state);
 
-  p = XNEW (struct cfa_save_data);
+  p = notes_alloc (sizeof (*p));
   p->cfa_offset = frchain_now->frch_cfi_data->cur_cfa_offset;
   p->next = frchain_now->frch_cfi_data->cfa_save_stack;
   frchain_now->frch_cfi_data->cfa_save_stack = p;
@@ -676,7 +673,6 @@ cfi_add_CFA_restore_state (void)
     {
       frchain_now->frch_cfi_data->cur_cfa_offset = p->cfa_offset;
       frchain_now->frch_cfi_data->cfa_save_stack = p->next;
-      free (p);
     }
   else
     as_bad (_("CFI state restore without previous remember"));
@@ -718,6 +714,7 @@ const pseudo_typeS cfi_pseudo_table[] =
     { "cfi_restore_state", dot_cfi, DW_CFA_restore_state },
     { "cfi_window_save", dot_cfi, DW_CFA_GNU_window_save },
     { "cfi_negate_ra_state", dot_cfi, DW_CFA_AARCH64_negate_ra_state },
+    { "cfi_negate_ra_state_with_pc", dot_cfi, DW_CFA_AARCH64_negate_ra_state_with_pc },
     { "cfi_escape", dot_cfi_escape, 0 },
     { "cfi_signal_frame", dot_cfi, CFI_signal_frame },
     { "cfi_personality", dot_cfi_personality, 0 },
@@ -918,6 +915,10 @@ dot_cfi (int arg)
       cfi_add_CFA_insn (DW_CFA_GNU_window_save);
       break;
 
+    case DW_CFA_AARCH64_negate_ra_state_with_pc:
+      cfi_add_CFA_insn (DW_CFA_AARCH64_negate_ra_state_with_pc);
+      break;
+
     case CFI_signal_frame:
       frchain_now->frch_cfi_data->cur_fde_data->signal_frame = 1;
       break;
@@ -951,7 +952,7 @@ dot_cfi_escape (int ignored ATTRIBUTE_UNUSED)
   tail = &head;
   do
     {
-      e = XNEW (struct cfi_escape_data);
+      e = notes_alloc (sizeof (*e));
       do_parse_cons_expression (&e->exp, 1);
       *tail = e;
       tail = &e->next;
@@ -1758,6 +1759,10 @@ output_cfi_insn (struct cfi_insn_data *insn)
       out_one (DW_CFA_GNU_window_save);
       break;
 
+    case DW_CFA_AARCH64_negate_ra_state_with_pc:
+      out_one (DW_CFA_AARCH64_negate_ra_state_with_pc);
+      break;
+
     case CFI_escape:
       {
 	struct cfi_escape_data *e;
@@ -2216,6 +2221,7 @@ cfi_change_reg_numbers (struct cfi_insn_data *insn, segT ccseg)
 	case DW_CFA_remember_state:
 	case DW_CFA_restore_state:
 	case DW_CFA_GNU_window_save:
+	case DW_CFA_AARCH64_negate_ra_state_with_pc:
 	case CFI_escape:
 	case CFI_label:
 	  break;
@@ -2333,13 +2339,6 @@ cfi_finish (void)
 	  ccseg = NULL;
 	  seek_next_seg = 0;
 
-	  for (cie = cie_root; cie; cie = cie_next)
-	    {
-	      cie_next = cie->next;
-	      free ((void *) cie);
-	    }
-	  cie_root = NULL;
-
 	  for (fde = all_fde_data; fde ; fde = fde->next)
 	    {
 	      if ((fde->sections & CFI_EMIT_eh_frame) == 0
@@ -2396,6 +2395,13 @@ cfi_finish (void)
 	      output_fde (fde, cie, true, first,
 			  fde->next == NULL ? EH_FRAME_ALIGNMENT : 2);
 	    }
+
+	  for (cie = cie_root; cie; cie = cie_next)
+	    {
+	      cie_next = cie->next;
+	      free (cie);
+	    }
+	  cie_root = NULL;
 	}
       while (EH_FRAME_LINKONCE && seek_next_seg == 2);
 
@@ -2527,13 +2533,6 @@ cfi_finish (void)
 	  ccseg = NULL;
 	  seek_next_seg = 0;
 
-	  for (cie = cie_root; cie; cie = cie_next)
-	    {
-	      cie_next = cie->next;
-	      free ((void *) cie);
-	    }
-	  cie_root = NULL;
-
 	  for (fde = all_fde_data; fde ; fde = fde->next)
 	    {
 	      if ((fde->sections & CFI_EMIT_debug_frame) == 0)
@@ -2572,6 +2571,13 @@ cfi_finish (void)
 	      cie = select_cie_for_fde (fde, false, &first, alignment);
 	      output_fde (fde, cie, false, first, alignment);
 	    }
+
+	  for (cie = cie_root; cie; cie = cie_next)
+	    {
+	      cie_next = cie->next;
+	      free (cie);
+	    }
+	  cie_root = NULL;
 	}
       while (SUPPORT_FRAME_LINKONCE && seek_next_seg == 2);
 
@@ -2579,8 +2585,17 @@ cfi_finish (void)
 	for (fde = all_fde_data; fde ; fde = fde->next)
 	  SET_HANDLED (fde, 0);
     }
+  all_fde_data = NULL;
+  last_fde_data = &all_fde_data;
+  cfi_sections_set = false;
+  cfi_sections = CFI_EMIT_eh_frame;
+  all_cfi_sections = 0;
+  last_fde = NULL;
   if (dwcfi_hash)
-    htab_delete (dwcfi_hash);
+    {
+      htab_delete (dwcfi_hash);
+      dwcfi_hash = NULL;
+    }
 }
 
 #else /* TARGET_USE_CFIPOP */
@@ -2614,14 +2629,16 @@ const pseudo_typeS cfi_pseudo_table[] =
     { "cfi_remember_state", dot_cfi_dummy, 0 },
     { "cfi_restore_state", dot_cfi_dummy, 0 },
     { "cfi_window_save", dot_cfi_dummy, 0 },
+    { "cfi_negate_ra_state", dot_cfi_dummy, 0 },
+    { "cfi_negate_ra_state_with_pc", dot_cfi_dummy, 0 },
     { "cfi_escape", dot_cfi_dummy, 0 },
     { "cfi_signal_frame", dot_cfi_dummy, 0 },
     { "cfi_personality", dot_cfi_dummy, 0 },
     { "cfi_personality_id", dot_cfi_dummy, 0 },
     { "cfi_lsda", dot_cfi_dummy, 0 },
     { "cfi_val_encoded_addr", dot_cfi_dummy, 0 },
-    { "cfi_label", dot_cfi_dummy, 0 },
     { "cfi_inline_lsda", dot_cfi_dummy, 0 },
+    { "cfi_label", dot_cfi_dummy, 0 },
     { "cfi_val_offset", dot_cfi_dummy, 0 },
     { NULL, NULL, 0 }
   };
