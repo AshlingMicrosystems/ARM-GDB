@@ -1699,9 +1699,9 @@ local_allocate_ifunc_dyn_relocs (struct bfd_link_info *info,
 	  || info->export_dynamic)
       && h->pointer_equality_needed)
     {
-      info->callbacks->einfo
+      info->callbacks->fatal
 	/* xgettext:c-format.  */
-	(_("%F%P: dynamic STT_GNU_IFUNC symbol `%s' with pointer "
+	(_("%P: dynamic STT_GNU_IFUNC symbol `%s' with pointer "
 	   "equality in `%pB' can not be used when making an "
 	   "executable; recompile with -fPIE and relink with -pie\n"),
 	 h->root.root.string,
@@ -2933,11 +2933,21 @@ perform_relocation (const Elf_Internal_Rela *rel, asection *input_section,
       {
 	value -= sec_addr (input_section) + rel->r_offset;
 	value += rel->r_addend;
-	bfd_vma word = bfd_get (howto->bitsize, input_bfd,
-				contents + rel->r_offset);
-	word = (word & ~howto->dst_mask) | (value & howto->dst_mask);
-	bfd_put (howto->bitsize, input_bfd, word, contents + rel->r_offset);
-	r = bfd_reloc_ok;
+	/* Check overflow.  */
+	if (ELFNN_R_TYPE (rel->r_info) == R_LARCH_32_PCREL)
+	  {
+	    r = loongarch_reloc_rewrite_imm_insn (rel, input_section,
+						  howto, input_bfd,
+						  contents, value);
+	  }
+	else
+	  {
+	    bfd_vma word = bfd_get (howto->bitsize, input_bfd,
+				    contents + rel->r_offset);
+	    word = (word & ~howto->dst_mask) | (value & howto->dst_mask);
+	    bfd_put (howto->bitsize, input_bfd, word, contents + rel->r_offset);
+	    r = bfd_reloc_ok;
+	  }
 	break;
       }
 

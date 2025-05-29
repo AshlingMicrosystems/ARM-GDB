@@ -976,57 +976,6 @@ discarded_section (const asection *sec)
 	  && sec->sec_info_type != SEC_INFO_TYPE_JUST_SYMS);
 }
 
-#define BFD_FAKE_SECTION(SEC, SYM, NAME, IDX, FLAGS)                   \
-  /* name, next, prev, id,  section_id, index, flags, user_set_vma, */ \
-  {  NAME, NULL, NULL, IDX, 0,          0,     FLAGS, 0,               \
-								       \
-  /* linker_mark, linker_has_input, gc_mark, decompress_status,     */ \
-     0,           0,                1,       0,                        \
-								       \
-  /* segment_mark, sec_info_type, use_rela_p, mmapped_p, alloced,   */ \
-     0,            0,             0,          0,         0,            \
-								       \
-  /* sec_flg0, sec_flg1, sec_flg2, sec_flg3, sec_flg4, sec_flg5,    */ \
-     0,        0,        0,        0,        0,        0,              \
-								       \
-  /* vma, lma, size, rawsize, compressed_size,                      */ \
-     0,   0,   0,    0,       0,                                       \
-								       \
-  /* output_offset, output_section, relocation, orelocation,        */ \
-     0,             &SEC,           NULL,       NULL,                  \
-								       \
-  /* reloc_count, alignment_power, filepos, rel_filepos,            */ \
-     0,           0,               0,       0,                         \
-								       \
-  /* line_filepos, userdata, contents, lineno, lineno_count,        */ \
-     0,            NULL,     NULL,     NULL,   0,                      \
-								       \
-  /* entsize, kept_section, moving_line_filepos,                    */ \
-     0,       NULL,         0,                                         \
-								       \
-  /* target_index, used_by_bfd, constructor_chain, owner,           */ \
-     0,            NULL,        NULL,              NULL,               \
-								       \
-  /* symbol,                                                        */ \
-     (struct bfd_symbol *) SYM,                                        \
-								       \
-  /* map_head, map_tail, already_assigned, type                     */ \
-     { NULL }, { NULL }, NULL,             0                           \
-								       \
-    }
-
-/* We use a macro to initialize the static asymbol structures because
-   traditional C does not permit us to initialize a union member while
-   gcc warns if we don't initialize it.
-   the_bfd, name, value, attr, section [, udata]  */
-#ifdef __STDC__
-#define GLOBAL_SYM_INIT(NAME, SECTION) \
-  { 0, NAME, 0, BSF_SECTION_SYM, SECTION, { 0 }}
-#else
-#define GLOBAL_SYM_INIT(NAME, SECTION) \
-  { 0, NAME, 0, BSF_SECTION_SYM, SECTION }
-#endif
-
 void bfd_section_list_clear (bfd *);
 
 asection *bfd_get_section_by_name (bfd *abfd, const char *name);
@@ -2353,6 +2302,16 @@ bfd_get_lto_type (const bfd *abfd)
   return abfd->lto_type;
 }
 
+static inline bool
+bfd_lto_slim_symbol_p (const bfd *abfd, const char *name)
+{
+  return (bfd_get_lto_type (abfd) != lto_non_ir_object
+	  && name != NULL
+	  && name[0] == '_'
+	  && name[1] == '_'
+	  && strcmp (name + (name[2] == '_'), "__gnu_lto_slim") == 0);
+}
+
 static inline flagword
 bfd_get_file_flags (const bfd *abfd)
 {
@@ -2963,6 +2922,20 @@ const char *bfd_format_string (bfd_format format);
     || (H)->type == bfd_link_hash_defweak) \
    && bfd_is_abs_section ((H)->u.def.section) \
    && !(H)->rel_from_abs)
+
+bool _bfd_generic_link_add_one_symbol
+   (struct bfd_link_info *info,
+    bfd *abfd,
+    const char *name,
+    flagword flags,
+    asection *section,
+    bfd_vma value,
+    const char *string,
+    bool copy,
+    bool collect,
+    struct bfd_link_hash_entry **hashp);
+
+bool bfd_link_align_section (asection *, unsigned int);
 
 bool bfd_link_split_section (bfd *abfd, asection *sec);
 

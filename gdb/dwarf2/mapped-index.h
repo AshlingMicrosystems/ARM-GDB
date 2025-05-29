@@ -1,6 +1,6 @@
 /* Base class for mapped indices
 
-   Copyright (C) 2021-2024 Free Software Foundation, Inc.
+   Copyright (C) 2021-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -65,8 +65,10 @@ struct dwarf_scanner_base
 
   /* Look up ADDR, and return either the corresponding CU, or nullptr
      if the address could not be found.  */
-  virtual dwarf2_per_cu_data *lookup (unrelocated_addr addr)
+  virtual dwarf2_per_cu *lookup (unrelocated_addr addr)
   { return nullptr; }
 };
+
+using dwarf_scanner_base_up = std::unique_ptr<dwarf_scanner_base>;
 
 #endif /* GDB_DWARF2_MAPPED_INDEX_H */

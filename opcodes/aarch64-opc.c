@@ -2542,12 +2542,16 @@ operand_general_constraint_met_p (const aarch64_opnd_info *opnds, int idx,
 	  assert (opnd->shifter.operator_present == 0);
 	  break;
 
-	case AARCH64_OPND_SVE_ADDR_R:
 	case AARCH64_OPND_SVE_ADDR_RR:
 	case AARCH64_OPND_SVE_ADDR_RR_LSL1:
 	case AARCH64_OPND_SVE_ADDR_RR_LSL2:
 	case AARCH64_OPND_SVE_ADDR_RR_LSL3:
 	case AARCH64_OPND_SVE_ADDR_RR_LSL4:
+	case AARCH64_OPND_SVE_ADDR_RM:
+	case AARCH64_OPND_SVE_ADDR_RM_LSL1:
+	case AARCH64_OPND_SVE_ADDR_RM_LSL2:
+	case AARCH64_OPND_SVE_ADDR_RM_LSL3:
+	case AARCH64_OPND_SVE_ADDR_RM_LSL4:
 	case AARCH64_OPND_SVE_ADDR_RX:
 	case AARCH64_OPND_SVE_ADDR_RX_LSL1:
 	case AARCH64_OPND_SVE_ADDR_RX_LSL2:
@@ -4817,12 +4821,16 @@ aarch64_print_operand (char *buf, size_t size, bfd_vma pc,
       break;
 
     case AARCH64_OPND_ADDR_REGOFF:
-    case AARCH64_OPND_SVE_ADDR_R:
     case AARCH64_OPND_SVE_ADDR_RR:
     case AARCH64_OPND_SVE_ADDR_RR_LSL1:
     case AARCH64_OPND_SVE_ADDR_RR_LSL2:
     case AARCH64_OPND_SVE_ADDR_RR_LSL3:
     case AARCH64_OPND_SVE_ADDR_RR_LSL4:
+    case AARCH64_OPND_SVE_ADDR_RM:
+    case AARCH64_OPND_SVE_ADDR_RM_LSL1:
+    case AARCH64_OPND_SVE_ADDR_RM_LSL2:
+    case AARCH64_OPND_SVE_ADDR_RM_LSL3:
+    case AARCH64_OPND_SVE_ADDR_RM_LSL4:
     case AARCH64_OPND_SVE_ADDR_RX:
     case AARCH64_OPND_SVE_ADDR_RX_LSL1:
     case AARCH64_OPND_SVE_ADDR_RX_LSL2:
@@ -5206,6 +5214,8 @@ const aarch64_sys_ins_reg aarch64_sys_regs_dc[] =
     { "cvac",       CPENS (3, C7, C10, 1), F_HASXT, AARCH64_NO_FEATURES },
     { "cgvac",      CPENS (3, C7, C10, 3), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (MEMTAG) },
     { "cgdvac",     CPENS (3, C7, C10, 5), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (MEMTAG) },
+    { "cvaoc",      CPENS (3, C7, C11, 0), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (V9_5A) },
+    { "cgdvaoc",    CPENS (3, C7, C11, 7), F_HASXT | F_ARCHEXT, AARCH64_FEATURES (2, V9_5A, MEMTAG) },
     { "csw",	    CPENS (0, C7, C10, 2), F_HASXT, AARCH64_NO_FEATURES },
     { "cgsw",       CPENS (0, C7, C10, 4), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (MEMTAG) },
     { "cgdsw",	    CPENS (0, C7, C10, 6), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (MEMTAG) },
@@ -5222,6 +5232,10 @@ const aarch64_sys_ins_reg aarch64_sys_regs_dc[] =
     { "cisw",       CPENS (0, C7, C14, 2), F_HASXT, AARCH64_NO_FEATURES },
     { "cigsw",      CPENS (0, C7, C14, 4), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (MEMTAG) },
     { "cigdsw",     CPENS (0, C7, C14, 6), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (MEMTAG) },
+    { "civaoc",     CPENS (3, C7, C15, 0), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (V9_5A) },
+    { "cigdvaoc",   CPENS (3, C7, C15, 7), F_HASXT | F_ARCHEXT, AARCH64_FEATURES (2, V9_5A, MEMTAG) },
+    { "cipae",      CPENS (4, C7, C14, 0), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (V8_7A) },
+    { "cigdpae",    CPENS (4, C7, C14, 7), F_HASXT | F_ARCHEXT, AARCH64_FEATURE (V8_7A) },
     { "cipapa",     CPENS (6, C7, C14, 1), F_HASXT, AARCH64_NO_FEATURES },
     { "cigdpapa",   CPENS (6, C7, C14, 5), F_HASXT, AARCH64_NO_FEATURES },
     { 0,       CPENS(0,0,0,0), 0, AARCH64_NO_FEATURES }

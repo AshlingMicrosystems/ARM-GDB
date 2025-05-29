@@ -1,5 +1,5 @@
 /* MI Command Set for GDB, the GNU debugger.
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
 
    Contributed by Cygnus Solutions (a Red Hat company).
 
@@ -21,12 +21,12 @@
 #include "mi-cmds.h"
 #include "mi-main.h"
 #include "mi-parse.h"
-#include <map>
+#include "gdbsupport/unordered_map.h"
 #include <string>
 
 /* MI command table (built at run time). */
 
-static std::map<std::string, mi_command_up> mi_cmd_table;
+static gdb::unordered_map<std::string, mi_command_up> mi_cmd_table;
 
 /* MI command with a pure MI implementation.  */
 

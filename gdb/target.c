@@ -1,6 +1,6 @@
 /* Select target systems and architectures at runtime for GDB.
 
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    Contributed by Cygnus Support.
 
@@ -50,7 +50,7 @@
 #include "gdbsupport/byte-vector.h"
 #include "gdbsupport/search.h"
 #include "terminal.h"
-#include <unordered_map>
+#include "gdbsupport/unordered_map.h"
 #include "target-connection.h"
 #include "valprint.h"
 #include "cli/cli-decode.h"
@@ -72,7 +72,7 @@ static int default_verify_memory (struct target_ops *self,
    TARGET_NAME" command that when invoked calls the factory registered
    here.  The target_info object is associated with the command via
    the command's context.  */
-static std::unordered_map<const target_info *, target_open_ftype *>
+static gdb::unordered_map<const target_info *, target_open_ftype *>
   target_factories;
 
 /* The singleton debug target.  */
@@ -1250,11 +1250,21 @@ generic_tls_error (void)
 	       _("Cannot find thread-local variables on this target"));
 }
 
-/* Using the objfile specified in OBJFILE, find the address for the
-   current thread's thread-local storage with offset OFFSET.  */
+/* See target.h.  */
+
 CORE_ADDR
-target_translate_tls_address (struct objfile *objfile, CORE_ADDR offset)
+target_translate_tls_address (struct objfile *objfile, CORE_ADDR offset,
+			      const char *name)
 {
+  if (!target_has_registers ())
+    {
+      if (name == nullptr)
+	error (_("Cannot translate TLS address without registers"));
+      else
+	error (_("Cannot find address of TLS symbol `%s' without registers"),
+	       name);
+    }
+
   volatile CORE_ADDR addr = 0;
   struct target_ops *target = current_inferior ()->top_target ();
   gdbarch *gdbarch = current_inferior ()->arch ();

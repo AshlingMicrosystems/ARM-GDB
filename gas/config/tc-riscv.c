@@ -93,6 +93,7 @@ enum riscv_csr_class
   CSR_CLASS_SSAIA_AND_H_32,	/* Ssaia with H, rv32 only */
   CSR_CLASS_SSAIA_OR_SSCSRIND,		/* Ssaia/Smcsrind */
   CSR_CLASS_SSAIA_OR_SSCSRIND_AND_H,	/* Ssaia/Smcsrind with H */
+  CSR_CLASS_SSCCFG,		/* Ssccfg */
   CSR_CLASS_SSCSRIND,		/* Sscsrind */
   CSR_CLASS_SSCSRIND_AND_H,	/* Sscsrind with H */
   CSR_CLASS_SSSTATEEN,		/* S[ms]stateen only */
@@ -105,6 +106,7 @@ enum riscv_csr_class
   CSR_CLASS_SSTC_32,		/* Sstc RV32 only */
   CSR_CLASS_SSTC_AND_H_32,	/* Sstc RV32 only (with H) */
   CSR_CLASS_SSCTR,		/* Ssctr */
+  CSR_CLASS_SSQOSID,		/* Ssqosid */
   CSR_CLASS_XTHEADVECTOR,	/* xtheadvector only */
 };
 
@@ -324,19 +326,6 @@ static riscv_parse_subset_t riscv_rps_as =
   true,			/* check_unknown_prefixed_ext.  */
 };
 
-/* Update file/function-level architecture string according to the
-   subset_list.  */
-
-static void
-riscv_set_arch_str (const char **arch_str_p)
-{
-  riscv_subset_list_t *subsets = riscv_rps_as.subset_list;
-  const char *arch_str = *arch_str_p;
-  if (arch_str != NULL)
-    free ((void *) arch_str);
-  *arch_str_p = riscv_arch_str (xlen, subsets);
-}
-
 /* This structure is used to hold a stack of .option values.  */
 struct riscv_option_stack
 {
@@ -368,8 +357,8 @@ riscv_set_arch (const char *s)
     }
   riscv_release_subset_list (riscv_rps_as.subset_list);
   riscv_parse_subset (&riscv_rps_as, s);
-  riscv_set_arch_str (&file_arch_str);
-  riscv_set_arch_str (&riscv_rps_as.subset_list->arch_str);
+  riscv_arch_str (xlen, riscv_rps_as.subset_list, true/* update */);
+  file_arch_str = strdup (riscv_rps_as.subset_list->arch_str);
 
   riscv_set_rvc (riscv_subset_supports (&riscv_rps_as, "c")
 		 || riscv_subset_supports (&riscv_rps_as, "zca"));
@@ -531,15 +520,12 @@ make_mapping_symbol (enum riscv_seg_mstate state,
       name = "$d";
       break;
     case MAP_INSN:
-      if (arch_str != NULL)
-	{
-	  size_t size = strlen (arch_str) + 3; /* "$x" + '\0'  */
-	  buff = xmalloc (size);
-	  snprintf (buff, size, "$x%s", arch_str);
-	  name = buff;
-	}
-      else
-	name = "$x";
+      gas_assert (arch_str);
+
+      size_t size = strlen (arch_str) + 3; /* "$x" + '\0'  */
+      buff = xmalloc (size);
+      snprintf (buff, size, "$x%s", arch_str);
+      name = buff;
       break;
     default:
       abort ();
@@ -585,11 +571,22 @@ make_mapping_symbol (enum riscv_seg_mstate state,
 
   if (odd_data_padding)
     {
-      /* If the removed mapping symbol is $x+arch, then add it back to
-	 the next $x.  */
-      const char *str = removed != NULL
-			&& strncmp (S_GET_NAME (removed), "$xrv", 4) == 0
-			? S_GET_NAME (removed) + 2 : NULL;
+      /* Search and find the previous $x+isa which in the same section.
+	 We added $x+isa at the start of all sections, so should find at
+	 least that one.  */
+      const char *str = NULL;
+      symbolS *p = symbol_previous (symbol);
+      for (; p != NULL; p = symbol_previous (p))
+	{
+	  if (now_seg == S_GET_SEGMENT (p)
+	      && S_GET_NAME (p)
+	      && strncmp (S_GET_NAME (p), "$xrv", 4) == 0
+	      && S_GET_VALUE (p) <= S_GET_VALUE (symbol))
+	    {
+	      str = S_GET_NAME (p) + 2;
+	      break;
+	    }
+	}
       make_mapping_symbol (MAP_INSN, frag->fr_fix + 1, frag, str,
 			   false/* odd_data_padding */);
     }
@@ -607,7 +604,6 @@ riscv_mapping_state (enum riscv_seg_mstate to_state,
 {
   enum riscv_seg_mstate from_state =
 	seg_info (now_seg)->tc_segment_info_data.map_state;
-  bool reset_seg_arch_str = false;
 
   if (!SEG_NORMAL (now_seg)
       /* For now we only add the mapping symbols to text sections.
@@ -622,26 +618,22 @@ riscv_mapping_state (enum riscv_seg_mstate to_state,
   symbolS *seg_arch_symbol =
 	seg_info (now_seg)->tc_segment_info_data.arch_map_symbol;
   if (to_state == MAP_INSN && seg_arch_symbol == 0)
-    {
-      /* Always add $x+arch at the first instruction of section.  */
-      reset_seg_arch_str = true;
-    }
+    /* The start of section.  */
+    ;
   else if (seg_arch_symbol != 0
 	   && to_state == MAP_INSN
 	   && !fr_align_code
 	   && strcmp (riscv_rps_as.subset_list->arch_str,
 		      S_GET_NAME (seg_arch_symbol) + 2) != 0)
-    {
-      reset_seg_arch_str = true;
-    }
+    /* Different architecture string.  */
+    ;
   else if (from_state == to_state)
     return;
 
   valueT value = (valueT) (frag_now_fix () - max_chars);
   seg_info (now_seg)->tc_segment_info_data.map_state = to_state;
   seg_info (now_seg)->tc_segment_info_data.last_insn16 = false;
-  const char *arch_str = reset_seg_arch_str
-			 ? riscv_rps_as.subset_list->arch_str : NULL;
+  const char *arch_str = riscv_rps_as.subset_list->arch_str;
   make_mapping_symbol (to_state, value, frag_now, arch_str,
 		       false/* odd_data_padding */);
 }
@@ -898,7 +890,7 @@ static const struct opcode_name_t opcode_name_list[] =
   /*reserved    0x5b.  */
   {"JAL",       0x6f},
   {"SYSTEM",    0x73},
-  /*reserved    0x77.  */
+  {"OP_VE",     0x77},
   {"CUSTOM_3",  0x7b},
   /* >80b       0x7f.  */
 
@@ -1127,6 +1119,9 @@ riscv_csr_address (const char *csr_name,
       is_h_required = (csr_class == CSR_CLASS_SSAIA_OR_SSCSRIND_AND_H);
       extension = "ssaia or sscsrind";
       break;
+    case CSR_CLASS_SSCCFG:
+      extension = "ssccfg";
+      break;
     case CSR_CLASS_SSCSRIND:
     case CSR_CLASS_SSCSRIND_AND_H:
       is_h_required = (csr_class == CSR_CLASS_SSCSRIND_AND_H);
@@ -1162,6 +1157,9 @@ riscv_csr_address (const char *csr_name,
       break;
     case CSR_CLASS_XTHEADVECTOR:
       extension = "xtheadvector";
+      break;
+    case CSR_CLASS_SSQOSID:
+      extension = "ssqosid";
       break;
     default:
       as_bad (_("internal: bad RISC-V CSR class (0x%x)"), csr_class);
@@ -1754,6 +1752,21 @@ validate_riscv_insn (const struct riscv_opcode *opc, int length)
 			  goto unknown_validate_operand;
 		      }
 		    break;
+		  default:
+		    goto unknown_validate_operand;
+		}
+		break;
+	    case 'm': /* Vendor-specific (MIPS) operands.  */
+	      switch (*++oparg)
+		{
+		  case '@': USE_BITS (OP_MASK_MIPS_HINT, OP_SH_MIPS_HINT);
+			    break;
+		  case '#': USE_BITS (OP_MASK_MIPS_IMM9, OP_SH_MIPS_IMM9);
+			    break;
+		  case '$': used_bits |= ENCODE_MIPS_LDP_IMM (-1U); break;
+		  case '%': used_bits |= ENCODE_MIPS_LWP_IMM (-1U); break;
+		  case '^': used_bits |= ENCODE_MIPS_SDP_IMM (-1U); break;
+		  case '&': used_bits |= ENCODE_MIPS_SWP_IMM (-1U); break;
 		  default:
 		    goto unknown_validate_operand;
 		}
@@ -4179,6 +4192,92 @@ riscv_ip (char *str, struct riscv_cl_insn *ip, expressionS *imm_expr,
 #undef ENCODE_UIMM_BIT_FIELD
 		  break;
 
+		case 'm': /* Vendor-specific (MIPS) operands.  */
+		  switch (*++oparg)
+		    {
+		    case '@': /* hint 0 - 31.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long)imm_expr->X_add_number > 31)
+			as_bad(_("Improper hint amount (%lu)"),
+			       (unsigned long)imm_expr->X_add_number);
+		      INSERT_OPERAND(MIPS_HINT, *ip, imm_expr->X_add_number);
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case '#': /* immediate 0 - 511.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long)imm_expr->X_add_number > 511)
+			as_bad(_("Improper immediate amount (%lu)"),
+			       (unsigned long)imm_expr->X_add_number);
+		      INSERT_OPERAND(MIPS_IMM9, *ip, imm_expr->X_add_number);
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case '$': /* LDP offset 0 to (1<<7)-8.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long)imm_expr->X_add_number >= (1 << 7)
+			  || ((unsigned long)imm_expr->X_add_number & 0x7) != 0)
+			as_bad(_("Improper LDP offset amount (%lu)"),
+			       (unsigned long)imm_expr->X_add_number);
+		      INSERT_OPERAND(MIPS_LDP_OFFSET, *ip,
+				     (imm_expr->X_add_number >> 3));
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case '%': /* LWP offset 0 to (1<<7)-4.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long)imm_expr->X_add_number >= (1 << 7)
+			  || ((unsigned long)imm_expr->X_add_number & 0x3) != 0)
+			as_bad(_("Improper LWP offset amount (%lu)"),
+			       (unsigned long)imm_expr->X_add_number);
+		      INSERT_OPERAND(MIPS_LWP_OFFSET, *ip,
+				     (imm_expr->X_add_number >> 2));
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case '^': /* SDP offset 0 to (1<<7)-8.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long)imm_expr->X_add_number >= (1 << 7)
+			  || ((unsigned long)imm_expr->X_add_number & 0x7) != 0)
+			as_bad(_("Improper SDP offset amount (%lu)"),
+			       (unsigned long)imm_expr->X_add_number);
+		      INSERT_OPERAND(MIPS_SDP_OFFSET10, *ip,
+				     (imm_expr->X_add_number >> 3));
+		      INSERT_OPERAND(MIPS_SDP_OFFSET25, *ip,
+				     (imm_expr->X_add_number >> 5));
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case '&': /* SWP offset 0 to (1<<7)-4.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long)imm_expr->X_add_number >= (1 << 7)
+			  || ((unsigned long)imm_expr->X_add_number & 0x3) != 0)
+			as_bad(_("Improper SWP offset amount (%lu)"),
+			       (unsigned long)imm_expr->X_add_number);
+		      INSERT_OPERAND(MIPS_SWP_OFFSET9, *ip,
+				     (imm_expr->X_add_number >> 2));
+		      INSERT_OPERAND(MIPS_SWP_OFFSET25, *ip,
+				     (imm_expr->X_add_number >> 5));
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    default:
+		      goto unknown_riscv_ip_operand;
+		    }
+		  break;
+
 		default:
 		  goto unknown_riscv_ip_operand;
 		}
@@ -4753,7 +4852,13 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg)
 	  bfd_vma delta = target - md_pcrel_from (fixP);
 	  bfd_putl32 (bfd_getl32 (buf) | ENCODE_JTYPE_IMM (delta), buf);
 	  if (!riscv_opts.relax && S_IS_LOCAL (fixP->fx_addsy))
-	    fixP->fx_done = 1;
+	    {
+	      if (!VALID_JTYPE_IMM (delta))
+		as_bad_where (fixP->fx_file, fixP->fx_line,
+			      _("invalid J-type offset (%+lld)"),
+			      (long long) delta);
+	      fixP->fx_done = 1;
+	    }
 	}
       break;
 
@@ -4765,7 +4870,13 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg)
 	  bfd_vma delta = target - md_pcrel_from (fixP);
 	  bfd_putl32 (bfd_getl32 (buf) | ENCODE_BTYPE_IMM (delta), buf);
 	  if (!riscv_opts.relax && S_IS_LOCAL (fixP->fx_addsy))
-	    fixP->fx_done = 1;
+	    {
+	      if (!VALID_BTYPE_IMM (delta))
+		as_bad_where (fixP->fx_file, fixP->fx_line,
+			      _("invalid B-type offset (%+lld)"),
+			      (long long) delta);
+	      fixP->fx_done = 1;
+	    }
 	}
       break;
 
@@ -4777,7 +4888,13 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg)
 	  bfd_vma delta = target - md_pcrel_from (fixP);
 	  bfd_putl16 (bfd_getl16 (buf) | ENCODE_CBTYPE_IMM (delta), buf);
 	  if (!riscv_opts.relax && S_IS_LOCAL (fixP->fx_addsy))
-	    fixP->fx_done = 1;
+	    {
+	      if (!VALID_CBTYPE_IMM (delta))
+		as_bad_where (fixP->fx_file, fixP->fx_line,
+			      _("invalid CB-type offset (%+lld)"),
+			      (long long) delta);
+	      fixP->fx_done = 1;
+	    }
 	}
       break;
 
@@ -4789,7 +4906,13 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg)
 	  bfd_vma delta = target - md_pcrel_from (fixP);
 	  bfd_putl16 (bfd_getl16 (buf) | ENCODE_CJTYPE_IMM (delta), buf);
 	  if (!riscv_opts.relax && S_IS_LOCAL (fixP->fx_addsy))
-	    fixP->fx_done = 1;
+	    {
+	      if (!VALID_CJTYPE_IMM (delta))
+		as_bad_where (fixP->fx_file, fixP->fx_line,
+			      _("invalid CJ-type offset (%+lld)"),
+			      (long long) delta);
+	      fixP->fx_done = 1;
+	    }
 	}
       break;
 
@@ -4824,7 +4947,14 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg)
 		      | ENCODE_UTYPE_IMM (RISCV_CONST_HIGH_PART (value)),
 		      buf);
 	  if (!riscv_opts.relax)
-	    fixP->fx_done = 1;
+	    {
+	      if (xlen > 32
+		  && !VALID_UTYPE_IMM (RISCV_CONST_HIGH_PART (value)))
+		as_bad_where (fixP->fx_file, fixP->fx_line,
+			      _("invalid pcrel_hi offset (%+lld)"),
+			      (long long) value);
+	      fixP->fx_done = 1;
+	    }
 	}
       relaxable = true;
       break;
@@ -4850,7 +4980,8 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg)
 	      bfd_putl32 (bfd_getl32 (buf) | ENCODE_STYPE_IMM (value), buf);
 	    else
 	      bfd_putl32 (bfd_getl32 (buf) | ENCODE_ITYPE_IMM (value), buf);
-	    /* Relaxations should never be enabled by `.option relax'.  */
+	    /* Relaxations should never be enabled by `.option relax'.
+	       The offset is checked by corresponding %pcrel_hi entry.  */
 	    if (!riscv_opts.relax)
 	      fixP->fx_done = 1;
 	  }
@@ -4932,7 +5063,7 @@ s_riscv_option (int x ATTRIBUTE_UNUSED)
 {
   char *name = input_line_pointer, ch;
 
-  while (!is_end_of_line[(unsigned char) *input_line_pointer])
+  while (!is_end_of_stmt (*input_line_pointer))
     ++input_line_pointer;
   ch = *input_line_pointer;
   *input_line_pointer = '\0';
@@ -4940,13 +5071,13 @@ s_riscv_option (int x ATTRIBUTE_UNUSED)
   if (strcmp (name, "rvc") == 0)
     {
       riscv_update_subset (&riscv_rps_as, "+c");
-      riscv_set_arch_str (&riscv_rps_as.subset_list->arch_str);
+      riscv_arch_str (xlen, riscv_rps_as.subset_list, true/* update */);
       riscv_set_rvc (true);
     }
   else if (strcmp (name, "norvc") == 0)
     {
       riscv_update_subset (&riscv_rps_as, "-c");
-      riscv_set_arch_str (&riscv_rps_as.subset_list->arch_str);
+      riscv_arch_str (xlen, riscv_rps_as.subset_list, true/* update */);
       riscv_set_rvc (false);
     }
   else if (strcmp (name, "pic") == 0)
@@ -4967,7 +5098,7 @@ s_riscv_option (int x ATTRIBUTE_UNUSED)
       if (is_whitespace (*name) && *name != '\0')
 	name++;
       riscv_update_subset (&riscv_rps_as, name);
-      riscv_set_arch_str (&riscv_rps_as.subset_list->arch_str);
+      riscv_arch_str (xlen, riscv_rps_as.subset_list, true/* update */);
 
       riscv_set_rvc (riscv_subset_supports (&riscv_rps_as, "c")
 		     || riscv_subset_supports (&riscv_rps_as, "zca"));
@@ -5373,7 +5504,7 @@ RISC-V options:\n\
   -fno-pic                    don't generate position-independent code (default)\n\
   -march=ISA                  set the RISC-V architecture\n\
   -misa-spec=ISAspec          set the RISC-V ISA spec (2.2, 20190608, 20191213)\n\
-  -mpriv-spec=PRIVspec        set the RISC-V privilege spec (1.10, 1.11, 1.12)\n\
+  -mpriv-spec=PRIVspec        set the RISC-V privilege spec (1.10, 1.11, 1.12, 1.13)\n\
   -mabi=ABI                   set the RISC-V ABI\n\
   -mrelax                     enable relax (default)\n\
   -mno-relax                  disable relax\n\
@@ -5474,7 +5605,7 @@ s_riscv_insn (int x ATTRIBUTE_UNUSED)
   bfd_reloc_code_real_type imm_reloc = BFD_RELOC_UNUSED;
   char save_c;
 
-  while (!is_end_of_line[(unsigned char) *input_line_pointer])
+  while (!is_end_of_stmt (*input_line_pointer))
     ++input_line_pointer;
 
   save_c = *input_line_pointer;

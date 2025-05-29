@@ -1,6 +1,6 @@
 /* General utility routines for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -119,7 +119,7 @@ show_sevenbit_strings (struct ui_file *file, int from_tty,
 
 /* String to be printed before warning messages, if any.  */
 
-const char *warning_pre_print = "\nwarning: ";
+const char *warning_pre_print = "\n";
 
 bool pagination_enabled = true;
 static void
@@ -176,8 +176,9 @@ vwarning (const char *string, va_list args)
 	  term_state.emplace ();
 	  target_terminal::ours_for_output ();
 	}
-      if (warning_pre_print)
-	gdb_puts (warning_pre_print, gdb_stderr);
+      gdb_puts (warning_pre_print, gdb_stderr);
+      print_warning_prefix (gdb_stderr);
+      gdb_puts (_("warning: "), gdb_stderr);
       gdb_vprintf (gdb_stderr, string, args);
       gdb_printf (gdb_stderr, "\n");
     }
@@ -382,7 +383,7 @@ internal_vproblem (struct internal_problem *problem,
 #endif
 
   /* Create a string containing the full error/warning message.  Need
-     to call query with this full string, as otherwize the reason
+     to call query with this full string, as otherwise the reason
      (error/warning) and question become separated.  Format using a
      style similar to a compiler error message.  Include extra detail
      so that the user knows that they are living on the edge.  */
@@ -1407,18 +1408,6 @@ pager_file::emit_style_escape (const ui_file_style &style)
     }
 }
 
-/* See pager.h.  */
-
-void
-pager_file::reset_style ()
-{
-  if (can_emit_style_escape ())
-    {
-      m_applied_style = ui_file_style ();
-      m_wrap_buffer.append (m_applied_style.to_ansi ());
-    }
-}
-
 /* Wait, so the user can read what's on the screen.  Prompt the user
    to continue by pressing RETURN.  'q' is also provided because
    telling users what to do in the prompt is more user-friendly than
@@ -1636,10 +1625,7 @@ begin_line (void)
 void
 pager_file::puts (const char *linebuffer)
 {
-  const char *lineptr;
-
-  if (linebuffer == 0)
-    return;
+  gdb_assert (linebuffer != nullptr);
 
   /* Don't do any filtering or wrapping if both are disabled.  */
   if (batch_flag
@@ -1670,8 +1656,7 @@ pager_file::puts (const char *linebuffer)
      when this is necessary; prompt user for new page when this is
      necessary.  */
 
-  lineptr = linebuffer;
-  while (*lineptr)
+  while (*linebuffer != '\0')
     {
       /* Possible new page.  Note that PAGINATION_DISABLED_FOR_COMMAND
 	 might be set during this loop, so we must continue to check
@@ -1681,39 +1666,39 @@ pager_file::puts (const char *linebuffer)
 	  && lines_printed >= lines_allowed)
 	prompt_for_continue ();
 
-      while (*lineptr && *lineptr != '\n')
+      while (*linebuffer != '\0' && *linebuffer != '\n')
 	{
 	  int skip_bytes;
 
 	  /* Print a single line.  */
-	  if (*lineptr == '\t')
+	  if (*linebuffer == '\t')
 	    {
 	      m_wrap_buffer.push_back ('\t');
 	      /* Shifting right by 3 produces the number of tab stops
 		 we have already passed, and then adding one and
 		 shifting left 3 advances to the next tab stop.  */
 	      chars_printed = ((chars_printed >> 3) + 1) << 3;
-	      lineptr++;
+	      linebuffer++;
 	    }
-	  else if (*lineptr == '\033'
-		   && skip_ansi_escape (lineptr, &skip_bytes))
+	  else if (*linebuffer == '\033'
+		   && skip_ansi_escape (linebuffer, &skip_bytes))
 	    {
-	      m_wrap_buffer.append (lineptr, skip_bytes);
+	      m_wrap_buffer.append (linebuffer, skip_bytes);
 	      /* Note that we don't consider this a character, so we
 		 don't increment chars_printed here.  */
-	      lineptr += skip_bytes;
+	      linebuffer += skip_bytes;
 	    }
-	  else if (*lineptr == '\r')
+	  else if (*linebuffer == '\r')
 	    {
-	      m_wrap_buffer.push_back (*lineptr);
+	      m_wrap_buffer.push_back (*linebuffer);
 	      chars_printed = 0;
-	      lineptr++;
+	      linebuffer++;
 	    }
 	  else
 	    {
-	      m_wrap_buffer.push_back (*lineptr);
+	      m_wrap_buffer.push_back (*linebuffer);
 	      chars_printed++;
-	      lineptr++;
+	      linebuffer++;
 	    }
 
 	  if (chars_printed >= chars_per_line)
@@ -1787,13 +1772,13 @@ pager_file::puts (const char *linebuffer)
 	    }
 	}
 
-      if (*lineptr == '\n')
+      if (*linebuffer == '\n')
 	{
 	  chars_printed = 0;
 	  wrap_here (0); /* Spit out chars, cancel further wraps.  */
 	  lines_printed++;
 	  m_stream->puts ("\n");
-	  lineptr++;
+	  linebuffer++;
 	}
     }
 
@@ -3348,7 +3333,7 @@ gdb_argv_as_array_view_test ()
    argument.  */
 
 std::string
-ldirname (const char *filename)
+gdb_ldirname (const char *filename)
 {
   std::string dirname;
   const char *base = lbasename (filename);
@@ -3388,51 +3373,6 @@ parse_pid_to_attach (const char *args)
     error (_("Illegal process-id: %s."), args);
 
   return pid;
-}
-
-/* Substitute all occurrences of string FROM by string TO in *STRINGP.  *STRINGP
-   must come from xrealloc-compatible allocator and it may be updated.  FROM
-   needs to be delimited by IS_DIR_SEPARATOR or DIRNAME_SEPARATOR (or be
-   located at the start or end of *STRINGP.  */
-
-void
-substitute_path_component (char **stringp, const char *from, const char *to)
-{
-  char *string = *stringp, *s;
-  const size_t from_len = strlen (from);
-  const size_t to_len = strlen (to);
-
-  for (s = string;;)
-    {
-      s = strstr (s, from);
-      if (s == NULL)
-	break;
-
-      if ((s == string || IS_DIR_SEPARATOR (s[-1])
-	   || s[-1] == DIRNAME_SEPARATOR)
-	  && (s[from_len] == '\0' || IS_DIR_SEPARATOR (s[from_len])
-	      || s[from_len] == DIRNAME_SEPARATOR))
-	{
-	  char *string_new;
-
-	  string_new
-	    = (char *) xrealloc (string, (strlen (string) + to_len + 1));
-
-	  /* Relocate the current S pointer.  */
-	  s = s - string + string_new;
-	  string = string_new;
-
-	  /* Replace from by to.  */
-	  memmove (&s[to_len], &s[from_len], strlen (&s[from_len]) + 1);
-	  memcpy (s, to, to_len);
-
-	  s += to_len;
-	}
-      else
-	s++;
-    }
-
-  *stringp = string;
 }
 
 #ifdef HAVE_WAITPID

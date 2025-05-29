@@ -1,6 +1,6 @@
 /* Remote target communications for serial-line targets in custom GDB protocol
 
-   Copyright (C) 1988-2024 Free Software Foundation, Inc.
+   Copyright (C) 1988-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -77,10 +77,10 @@
 #include "gdbsupport/search.h"
 #include <algorithm>
 #include <iterator>
-#include <unordered_map>
 #include "async-event.h"
 #include "gdbsupport/selftest.h"
 #include "cli/cli-style.h"
+#include "gdbsupport/remote-args.h"
 
 /* The remote target.  */
 
@@ -700,7 +700,7 @@ public: /* data */
 
   /* Contains the regnums of the expedited registers in the last stop
      reply packet.  */
-  std::set<int> last_seen_expedited_registers;
+  gdb::unordered_set<int> last_seen_expedited_registers;
 
 private:
   /* Asynchronous signal handle registered as event loop source for
@@ -710,7 +710,7 @@ private:
   /* Mapping of remote protocol data for each gdbarch.  Usually there
      is only one entry here, though we may see more with stubs that
      support multi-process.  */
-  std::unordered_map<struct gdbarch *, remote_arch_state>
+  gdb::unordered_map<struct gdbarch *, remote_arch_state>
     m_arch_states;
 };
 
@@ -1622,6 +1622,12 @@ struct remote_thread_info : public private_thread_info
   std::string extra;
   std::string name;
   int core = -1;
+
+  /* The string representation for the thread's id.
+
+     The target specifies this if they want to display the thread id
+     in a specific way.  If empty, the default approach is used.  */
+  std::string id_str;
 
   /* Thread handle, perhaps a pthread_t or thread_t value, stored as a
      sequence of bytes.  */
@@ -4030,6 +4036,9 @@ struct thread_item
   /* The thread's name.  */
   std::string name;
 
+  /* The thread's id, translated to a string for displaying.  */
+  std::string id_str;
+
   /* The core the thread was running on.  -1 if not known.  */
   int core = -1;
 
@@ -4156,6 +4165,10 @@ start_thread (struct gdb_xml_parser *parser,
   if (attr != NULL)
     item.name = (const char *) attr->value.get ();
 
+  attr = xml_find_attribute (attributes, "id_str");
+  if (attr != nullptr)
+    item.id_str = (const char *) attr->value.get ();
+
   attr = xml_find_attribute (attributes, "handle");
   if (attr != NULL)
     item.thread_handle = hex2bin ((const char *) attr->value.get ());
@@ -4177,6 +4190,7 @@ const struct gdb_xml_attribute thread_attributes[] = {
   { "id", GDB_XML_AF_NONE, NULL, NULL },
   { "core", GDB_XML_AF_OPTIONAL, gdb_xml_parse_attr_ulongest, NULL },
   { "name", GDB_XML_AF_OPTIONAL, NULL, NULL },
+  { "id_str", GDB_XML_AF_OPTIONAL, NULL, NULL },
   { "handle", GDB_XML_AF_OPTIONAL, NULL, NULL },
   { NULL, GDB_XML_AF_NONE, NULL, NULL }
 };
@@ -4361,6 +4375,7 @@ remote_target::update_thread_list ()
 	      info->core = item.core;
 	      info->extra = std::move (item.extra);
 	      info->name = std::move (item.name);
+	      info->id_str = std::move (item.id_str);
 	      info->thread_handle = std::move (item.thread_handle);
 	    }
 	}
@@ -4929,7 +4944,7 @@ remote_target::process_initial_stop_replies (int from_tty)
 
       event_ptid = target_wait (waiton_ptid, &ws, TARGET_WNOHANG);
       if (remote_debug)
-	print_target_wait_results (waiton_ptid, event_ptid, ws);
+	print_target_wait_results (waiton_ptid, event_ptid, ws, this);
 
       switch (ws.kind ())
 	{
@@ -9021,7 +9036,7 @@ remote_target::process_g_packet (struct regcache *regcache)
 
   /* Reply describes registers byte by byte, each byte encoded as two
      hex characters.  Suck them all up, then supply them to the
-     register cacheing/storage mechanism.  */
+     register caching/storage mechanism.  */
 
   p = rs->buf.data ();
   for (i = 0; i < rsa->sizeof_g_packet; i++)
@@ -10821,16 +10836,15 @@ remote_target::extended_remote_run (const std::string &args)
 
   if (!args.empty ())
     {
-      int i;
+      std::vector<std::string> split_args = gdb::remote_args::split (args);
 
-      gdb_argv argv (args.c_str ());
-      for (i = 0; argv[i] != NULL; i++)
+      for (const auto &a : split_args)
 	{
-	  if (strlen (argv[i]) * 2 + 1 + len >= get_remote_packet_size ())
+	  if (a.size () * 2 + 1 + len >= get_remote_packet_size ())
 	    error (_("Argument list too long for run packet"));
 	  rs->buf[len++] = ';';
-	  len += 2 * bin2hex ((gdb_byte *) argv[i], rs->buf.data () + len,
-			      strlen (argv[i]));
+	  len += 2 * bin2hex ((gdb_byte *) a.c_str (), rs->buf.data () + len,
+			      a.size ());
 	}
     }
 
@@ -11636,7 +11650,7 @@ remote_target::remote_write_qxfer (const char *object_name,
   i = snprintf (rs->buf.data (), max_size,
 		"qXfer:%s:write:%s:%s:",
 		object_name, annex ? annex : "",
-		phex_nz (offset, sizeof offset));
+		phex_nz (offset));
   max_size -= (i + 1);
 
   /* Escape as much data as fits into rs->buf.  */
@@ -11701,8 +11715,8 @@ remote_target::remote_read_qxfer (const char *object_name,
   snprintf (rs->buf.data (), get_remote_packet_size () - 4,
 	    "qXfer:%s:read:%s:%s,%s",
 	    object_name, annex ? annex : "",
-	    phex_nz (offset, sizeof offset),
-	    phex_nz (n, sizeof n));
+	    phex_nz (offset),
+	    phex_nz (n));
   i = putpkt (rs->buf);
   if (i < 0)
     return TARGET_XFER_E_IO;
@@ -12000,7 +12014,7 @@ remote_target::search_memory (CORE_ADDR start_addr, ULONGEST search_space_len,
   i = snprintf (rs->buf.data (), max_size,
 		"qSearch:memory:%s;%s;",
 		phex_nz (start_addr, addr_size),
-		phex_nz (search_space_len, sizeof (search_space_len)));
+		phex_nz (search_space_len));
   max_size -= (i + 1);
 
   /* Escape as much data as fits into rs->buf.  */
@@ -12056,6 +12070,9 @@ remote_target::rcmd (const char *command, struct ui_file *outbuf)
   /* Send a NULL command across as an empty command.  */
   if (command == NULL)
     command = "";
+
+  /* It might be important for this command to know the current thread.  */
+  set_general_thread (inferior_ptid);
 
   /* The query prefix.  */
   strcpy (rs->buf.data (), "qRcmd,");
@@ -12392,7 +12409,16 @@ remote_target::pid_to_str (ptid_t ptid)
     {
       if (magic_null_ptid == ptid)
 	return "Thread <main>";
-      else if (m_features.remote_multi_process_p ())
+
+      thread_info *thread = this->find_thread (ptid);
+      if ((thread != nullptr) && (thread->priv != nullptr))
+	{
+	  remote_thread_info *priv = get_remote_thread_info (thread);
+	  if (!priv->id_str.empty ())
+	    return priv->id_str;
+	}
+
+      if (m_features.remote_multi_process_p ())
 	if (ptid.lwp () == 0)
 	  return normal_pid_to_str (ptid);
 	else
@@ -12449,9 +12475,6 @@ remote_target::get_thread_local_address (ptid_t ptid, CORE_ADDR lm,
   return 0;
 }
 
-/* Provide thread local base, i.e. Thread Information Block address.
-   Returns 1 if ptid is found and thread_local_base is non zero.  */
-
 bool
 remote_target::get_tib_address (ptid_t ptid, CORE_ADDR *addr)
 {
@@ -12478,14 +12501,12 @@ remote_target::get_tib_address (ptid_t ptid, CORE_ADDR *addr)
 	  return true;
 	}
       else if (result.status () == PACKET_UNKNOWN)
-	error (_("Remote target doesn't support qGetTIBAddr packet"));
+	return false;
       else
 	error (_("Remote target failed to process qGetTIBAddr request, %s"),
 		 result.err_msg ());
     }
-  else
-    error (_("qGetTIBAddr not supported or disabled on this target"));
-  /* Not reached.  */
+
   return false;
 }
 
@@ -13742,7 +13763,7 @@ remote_target::download_tracepoint (struct bp_location *loc)
   encode_actions_rsp (loc, &tdp_actions, &stepping_actions);
 
   tpaddr = loc->address;
-  strcpy (addrbuf, phex (tpaddr, sizeof (CORE_ADDR)));
+  strcpy (addrbuf, phex (tpaddr));
   ret = snprintf (buf.data (), buf.size (), "QTDP:%x:%s:%c:%lx:%x",
 		  b->number, addrbuf, /* address */
 		  (b->enable_state == bp_enabled ? 'E' : 'D'),
@@ -14006,7 +14027,7 @@ remote_target::enable_tracepoint (struct bp_location *location)
 
   xsnprintf (rs->buf.data (), get_remote_packet_size (), "QTEnable:%x:%s",
 	     location->owner->number,
-	     phex (location->address, sizeof (CORE_ADDR)));
+	     phex (location->address));
   putpkt (rs->buf);
   remote_get_noisy_reply ();
   if (rs->buf[0] == '\0')
@@ -14022,7 +14043,7 @@ remote_target::disable_tracepoint (struct bp_location *location)
 
   xsnprintf (rs->buf.data (), get_remote_packet_size (), "QTDisable:%x:%s",
 	     location->owner->number,
-	     phex (location->address, sizeof (CORE_ADDR)));
+	     phex (location->address));
   putpkt (rs->buf);
   remote_get_noisy_reply ();
   if (rs->buf[0] == '\0')
@@ -15548,7 +15569,7 @@ remote_target::commit_requested_thread_options ()
 
       *obuf_p++ = ';';
       obuf_p += xsnprintf (obuf_p, obuf_endp - obuf_p, "%s",
-			   phex_nz (options, sizeof (options)));
+			   phex_nz (options));
       if (tp->ptid != magic_null_ptid)
 	{
 	  *obuf_p++ = ':';
@@ -15787,8 +15808,8 @@ create_fetch_memtags_request (gdb::char_vector &packet, CORE_ADDR address,
 
   std::string request = string_printf ("qMemTags:%s,%s:%s",
 				       phex_nz (address, addr_size),
-				       phex_nz (len, sizeof (len)),
-				       phex_nz (type, sizeof (type)));
+				       phex_nz (len),
+				       phex_nz (type));
 
   strcpy (packet.data (), request.c_str ());
 }
@@ -15822,8 +15843,8 @@ create_store_memtags_request (gdb::char_vector &packet, CORE_ADDR address,
   /* Put together the main packet, address and length.  */
   std::string request = string_printf ("QMemTags:%s,%s:%s:",
 				       phex_nz (address, addr_size),
-				       phex_nz (len, sizeof (len)),
-				       phex_nz (type, sizeof (type)));
+				       phex_nz (len),
+				       phex_nz (type));
   request += bin2hex (tags.data (), tags.size ());
 
   /* Check if we have exceeded the maximum packet size.  */
@@ -16137,7 +16158,7 @@ test_packet_check_result ()
 
   SELF_CHECK (packet_check_result ("").status () == PACKET_UNKNOWN);
 }
-} // namespace selftests
+} /* namespace selftests */
 #endif /* GDB_SELF_TEST */
 
 void _initialize_remote ();

@@ -1,6 +1,6 @@
 /* DWARF 2 location expression support for GDB.
 
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -20,11 +20,12 @@
 #ifndef GDB_DWARF2_LOC_H
 #define GDB_DWARF2_LOC_H
 
+#include "gdbtypes.h"
 #include "dwarf2/expr.h"
 
 struct symbol_computed_ops;
 struct dwarf2_per_objfile;
-struct dwarf2_per_cu_data;
+struct dwarf2_per_cu;
 struct dwarf2_loclist_baton;
 struct agent_expr;
 struct axs_value;
@@ -67,7 +68,7 @@ value *compute_var_value (const char *name);
 
 call_site_parameter *dwarf_expr_reg_to_entry_parameter
   (const frame_info_ptr &frame, call_site_parameter_kind kind,
-   call_site_parameter_u kind_u, dwarf2_per_cu_data **per_cu_return,
+   call_site_parameter_u kind_u, dwarf2_per_cu **per_cu_return,
    dwarf2_per_objfile **per_objfile_return);
 
 
@@ -78,7 +79,7 @@ call_site_parameter *dwarf_expr_reg_to_entry_parameter
 
 value *dwarf2_evaluate_loc_desc (type *type, const frame_info_ptr &frame,
 				 const gdb_byte *data, size_t size,
-				 dwarf2_per_cu_data *per_cu,
+				 dwarf2_per_cu *per_cu,
 				 dwarf2_per_objfile *per_objfile,
 				 bool as_lval = true);
 
@@ -99,7 +100,7 @@ struct property_addr_info
 
   /* If not NULL, a pointer to the info for the object containing
      the object described by this node.  */
-  struct property_addr_info *next;
+  const property_addr_info *next;
 };
 
 /* Converts a dynamic property into a static one.  FRAME is the frame in which
@@ -167,12 +168,32 @@ struct dwarf2_locexpr_baton
      directly.  */
   bool is_reference;
 
+  /* True if this object is actually a dwarf2_field_location_baton.  */
+  bool is_field_location;
+
   /* The objfile that was used when creating this.  */
   dwarf2_per_objfile *per_objfile;
 
   /* The compilation unit containing the symbol whose location
      we're computing.  */
-  struct dwarf2_per_cu_data *per_cu;
+  dwarf2_per_cu *per_cu;
+};
+
+/* If the DWARF location for a field used DW_AT_bit_size, then an
+   object of this type is created to represent the field location.
+   This is then used to apply the bit offset after computing the
+   field's byte offset.  Objects of this type always set the
+   'is_field_location' member in dwarf2_locexpr_baton.  See also
+   apply_bit_offset_to_field.  */
+
+struct dwarf2_field_location_baton : public dwarf2_locexpr_baton
+{
+  /* The bit offset, coming from DW_AT_bit_offset.  */
+  LONGEST bit_offset;
+
+  /* The DW_AT_byte_size of the field.  If no explicit byte size was
+     specified, this is 0.  */
+  LONGEST explicit_byte_size;
 };
 
 struct dwarf2_loclist_baton
@@ -192,28 +213,14 @@ struct dwarf2_loclist_baton
 
   /* The compilation unit containing the symbol whose location
      we're computing.  */
-  struct dwarf2_per_cu_data *per_cu;
+  dwarf2_per_cu *per_cu;
 
   /* Non-zero if the location list lives in .debug_loc.dwo.
      The format of entries in this section are different.  */
   unsigned char from_dwo;
-};
 
-/* The baton used when a dynamic property is an offset to a parent
-   type.  This can be used, for instance, then the bound of an array
-   inside a record is determined by the value of another field inside
-   that record.  */
-
-struct dwarf2_offset_baton
-{
-  /* The offset from the parent type where the value of the property
-     is stored.  In the example provided above, this would be the offset
-     of the field being used as the array bound.  */
-  LONGEST offset;
-
-  /* The type of the object whose property is dynamic.  In the example
-     provided above, this would the array's index type.  */
-  struct type *type;
+  /* The version of DWARF this loclist comes from.  */
+  unsigned char dwarf_version;
 };
 
 /* A dynamic property is either expressed as a single location expression
@@ -238,8 +245,8 @@ struct dwarf2_property_baton
     /* Location list to be evaluated in the context of PROPERTY_TYPE.  */
     struct dwarf2_loclist_baton loclist;
 
-    /* The location is an offset to PROPERTY_TYPE.  */
-    struct dwarf2_offset_baton offset_info;
+    /* The location is stored in a field of PROPERTY_TYPE.  */
+    struct field field;
   };
 };
 
@@ -293,7 +300,7 @@ extern void invalid_synthetic_pointer ();
 /* Fetch the value pointed to by a synthetic pointer.  */
 
 extern struct value *indirect_synthetic_pointer
-  (sect_offset die, LONGEST byte_offset, dwarf2_per_cu_data *per_cu,
+  (sect_offset die, LONGEST byte_offset, dwarf2_per_cu *per_cu,
    dwarf2_per_objfile *per_objfile, const frame_info_ptr &frame,
    struct type *type, bool resolve_abstract_p = false);
 

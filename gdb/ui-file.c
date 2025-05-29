@@ -1,6 +1,6 @@
 /* UI_FILE - a generic STDIO like output stream.
 
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -88,18 +88,6 @@ ui_file::emit_style_escape (const ui_file_style &style)
 /* See ui-file.h.  */
 
 void
-ui_file::reset_style ()
-{
-  if (can_emit_style_escape ())
-    {
-      m_applied_style = ui_file_style ();
-      this->puts (m_applied_style.to_ansi ().c_str ());
-    }
-}
-
-/* See ui-file.h.  */
-
-void
 ui_file::printchar (int c, int quoter, bool async_safe)
 {
   char buf[4];
@@ -176,32 +164,6 @@ void
 null_file::write_async_safe (const char *buf, long sizeof_buf)
 {
   /* Discard the request.  */
-}
-
-
-
-/* true if the gdb terminal supports styling, and styling is enabled.  */
-
-static bool
-term_cli_styling ()
-{
-  if (!cli_styling)
-    return false;
-
-  const char *term = getenv ("TERM");
-  /* Windows doesn't by default define $TERM, but can support styles
-     regardless.  */
-#ifndef _WIN32
-  if (term == nullptr || !strcmp (term, "dumb"))
-    return false;
-#else
-  /* But if they do define $TERM, let us behave the same as on Posix
-     platforms, for the benefit of programs which invoke GDB as their
-     back-end.  */
-  if (term && !strcmp (term, "dumb"))
-    return false;
-#endif
-  return true;
 }
 
 

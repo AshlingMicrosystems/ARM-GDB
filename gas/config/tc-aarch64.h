@@ -162,10 +162,6 @@ void aarch64_elf_copy_symbol_attributes (symbolS *, symbolS *);
 
 #define TC_CONS_FIX_NEW(f,w,s,e,r) cons_fix_new_aarch64 ((f), (w), (s), (e))
 
-/* Max space for a rs_align_code fragment is 3 unaligned bytes
-   (fr_fix) plus 4 bytes to contain the repeating NOP (fr_var).  */
-#define MAX_MEM_FOR_RS_ALIGN_CODE 7
-
 /* For frags in code sections we need to record whether they contain
    code or data.  */
 struct aarch64_frag_type
@@ -183,6 +179,9 @@ struct aarch64_frag_type
 #define TC_FRAG_TYPE		struct aarch64_frag_type
 #define TC_FRAG_INIT(fragp, max_bytes) aarch64_init_frag (fragp, max_bytes)
 #define HANDLE_ALIGN(sec, fragp) aarch64_handle_align (fragp)
+/* Max space for a rs_align_code fragment is 3 unaligned bytes
+   (fr_fix) plus 4 bytes to contain the repeating NOP (fr_var).  */
+#define MAX_MEM_FOR_RS_ALIGN_CODE (3 + 4)
 
 #define md_do_align(N, FILL, LEN, MAX, LABEL)					\
   if (FILL == NULL && (N) != 0 && ! need_pass_2 && subseg_text_p (now_seg))	\
@@ -309,7 +308,7 @@ extern bool aarch64_sframe_ra_tracking_p (void);
 extern offsetT aarch64_sframe_cfa_ra_offset (void);
 #define sframe_cfa_ra_offset aarch64_sframe_cfa_ra_offset
 
-/* The abi/arch indentifier for SFrame.  */
+/* The abi/arch identifier for SFrame.  */
 unsigned char aarch64_sframe_get_abi_arch (void);
 #define sframe_get_abi_arch aarch64_sframe_get_abi_arch
 

@@ -66,16 +66,16 @@ enum i386_cpu
   CpuSSE3,
   /* VIA PadLock required */
   CpuPadLock,
-  /* Zhaoxin GMI SM2 required */
-  CpuGMISM2,
-  /* Zhaoxin GMI CCS required */
-  CpuGMICCS,
   /* Zhaoxin PadLock RNG2 required */
   CpuPadLockRNG2,
   /* Zhaoxin PadLock PHE2 required */
   CpuPadLockPHE2,
   /* Zhaoxin PadLock XMODX required */
   CpuPadLockXMODX,
+  /* Zhaoxin GMI SM2 required */
+  CpuGMISM2,
+  /* Zhaoxin GMI CCS required */
+  CpuGMICCS,
   /* AMD Secure Virtual Machine Ext-s required */
   CpuSVME,
   /* VMX Instructions required */
@@ -428,11 +428,11 @@ typedef union i386_cpu_flags
       unsigned int cpusse2:1;
       unsigned int cpusse3:1;
       unsigned int cpupadlock:1;
-      unsigned int cpugmism2:1;
-      unsigned int cpugmiccs:1;
       unsigned int cpupadlockrng2:1;
       unsigned int cpupadlockphe2:1;
       unsigned int cpupadlockxmodx:1;
+      unsigned int cpugmism2:1;
+      unsigned int cpugmiccs:1;
       unsigned int cpusvme:1;
       unsigned int cpuvmx:1;
       unsigned int cpusmx:1;
@@ -863,8 +863,9 @@ typedef struct i386_opcode_modifier
 enum operand_class
 {
   ClassNone,
-  Reg, /* GPRs and FP regs, distinguished by operand size */
+  Reg, /* GPRs, distinguished by operand size */
   SReg, /* Segment register */
+  RegFP, /* FP regs */
   RegCR, /* Control register */
   RegDR, /* Debug register */
   RegTR, /* Test register */
@@ -1074,6 +1075,7 @@ typedef struct insn_template
 #define Prefix_REX2		9	/* {rex2} */
 #define Prefix_NoOptimize	10	/* {nooptimize} */
 #define Prefix_NF		11	/* {nf} */
+#define Prefix_NoImm8s		12	/* {noimm8s} */
 
   /* the bits in opcode_modifier are used to generate the final opcode from
      the base_opcode.  These bits also are used to detect alternate forms of

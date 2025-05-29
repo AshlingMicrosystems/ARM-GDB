@@ -392,8 +392,11 @@ changequote([,])dnl
 	    use_ef_mips_abi_o32=1
 	    ;;
 	esac
-	# If Vendor is IMG, then MIPSr6 is used
+	# If target vendor is IMG, then MIPSr6 is used.
 	case ${target} in
+	  mips64*-img-*)
+	    mips_cpu=mips64r6
+	    ;;
 	  mips*-img-*)
 	    mips_cpu=mips32r6
 	    ;;
@@ -650,7 +653,7 @@ changequote([,])dnl
         fi
         AC_MSG_RESULT($with_isa_spec)
 
-        # --with-priv-spec=[1.9.1|1.10|1.11|1.12].
+        # --with-priv-spec=[1.9.1|1.10|1.11|1.12|1.13].
         AC_MSG_CHECKING(for default configuration of --with-priv-spec)
         if test "x${with_priv_spec}" != x; then
           AC_DEFINE_UNQUOTED(DEFAULT_RISCV_PRIV_SPEC, "$with_priv_spec",

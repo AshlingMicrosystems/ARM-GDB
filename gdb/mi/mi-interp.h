@@ -1,6 +1,6 @@
 /* MI Interpreter Definitions and Commands for GDB, the GNU debugger.
 
-   Copyright (C) 2017-2024 Free Software Foundation, Inc.
+   Copyright (C) 2017-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -103,7 +103,7 @@ public:
      command was issued.  */
   int mi_proceeded;
 
-  const char *current_token;
+  const char *current_token = nullptr;
 };
 
 /* Output the shared object attributes to UIOUT.  */

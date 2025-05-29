@@ -104,6 +104,9 @@
    the CoreFoundation framework. */
 #undef HAVE_CFPREFERENCESCOPYAPPVALUE
 
+/* Define if compiling support to gdb compile. */
+#undef HAVE_COMPILE
+
 /* Define to 1 if you have the <cursesX.h> header file. */
 #undef HAVE_CURSESX_H
 
@@ -718,9 +721,6 @@
 
 /* The size of `unsigned __int128', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED___INT128
-
-/* The size of `void *', as computed by sizeof. */
-#undef SIZEOF_VOID_P
 
 /* If using the C implementation of alloca, define if you know the
    direction of stack growth for your system; otherwise it will be

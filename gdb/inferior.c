@@ -1,6 +1,6 @@
 /* Multi-process control for GDB, the GNU debugger.
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -167,9 +167,10 @@ inferior::tty ()
 /* See inferior.h.  */
 
 void
-inferior::set_args (gdb::array_view<char * const> args)
+inferior::set_args (gdb::array_view<char * const> args,
+		    bool escape_shell_char)
 {
-  set_args (construct_inferior_arguments (args));
+  set_args (construct_inferior_arguments (args, escape_shell_char));
 }
 
 void

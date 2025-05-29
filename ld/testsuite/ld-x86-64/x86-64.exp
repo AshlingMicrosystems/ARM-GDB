@@ -563,6 +563,7 @@ run_dump_test "pr32591-3"
 run_dump_test "pr32591-3-x32"
 run_dump_test "pr32591-4"
 run_dump_test "pr32591-4-x32"
+run_dump_test "pr32809"
 
 if { ![skip_sframe_tests] } {
     run_dump_test "sframe-simple-1"
@@ -673,6 +674,8 @@ run_dump_test "load2"
 run_dump_test "load3a"
 run_dump_test "load3b"
 run_dump_test "load4"
+run_dump_test "load5a"
+run_dump_test "load5b"
 run_dump_test "call1a"
 run_dump_test "call1b"
 run_dump_test "call1c"
@@ -2166,9 +2169,9 @@ if { [isnative] && [check_compiler_available] } {
     }
 
     undefined_weak "$NOPIE_CFLAGS" "$NOPIE_LDFLAGS"
-    undefined_weak "-fPIE" ""
+    undefined_weak "-fPIE" "$NOPIE_LDFLAGS"
     undefined_weak "-fPIE" "-pie"
-    undefined_weak "-fPIE" "-Wl,-z,nodynamic-undefined-weak"
+    undefined_weak "-fPIE" "$NOPIE_LDFLAGS -Wl,-z,nodynamic-undefined-weak"
     undefined_weak "-fPIE" "-pie -Wl,-z,nodynamic-undefined-weak"
 }
 

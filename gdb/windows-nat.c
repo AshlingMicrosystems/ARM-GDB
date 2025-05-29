@@ -1,6 +1,6 @@
 /* Target-vector operations for controlling windows child processes, for GDB.
 
-   Copyright (C) 1995-2024 Free Software Foundation, Inc.
+   Copyright (C) 1995-2025 Free Software Foundation, Inc.
 
    Contributed by Cygnus Solutions, A Red Hat Company.
 
@@ -1789,7 +1789,6 @@ windows_nat_target::do_initial_windows_stuff (DWORD pid, bool attaching)
   inf = current_inferior ();
   if (!inf->target_is_pushed (this))
     inf->push_target (this);
-  disable_breakpoints_in_shlibs (current_program_space);
   windows_clear_solib ();
   clear_proceed_status (0);
   init_wait_for_inferior ();

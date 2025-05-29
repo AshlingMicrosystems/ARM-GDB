@@ -1,6 +1,6 @@
 /* GDB routines for manipulating objfiles.
 
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
 
    Contributed by Cygnus Support, using pieces from other GDB modules.
 
@@ -34,7 +34,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include "gdbsupport/gdb_obstack.h"
-#include "hashtab.h"
 
 #include "breakpoint.h"
 #include "block.h"
@@ -674,18 +673,18 @@ objfile_rebase (struct objfile *objfile, CORE_ADDR slide)
 /* See objfiles.h.  */
 
 bool
-objfile_has_full_symbols (objfile *objfile)
+objfile::has_full_symbols ()
 {
-  return objfile->compunit_symtabs != nullptr;
+  return this->compunit_symtabs != nullptr;
 }
 
 /* See objfiles.h.  */
 
 bool
-objfile_has_symbols (objfile *objfile)
+objfile::has_symbols ()
 {
-  for (::objfile *o : objfile->separate_debug_objfiles ())
-    if (o->has_partial_symbols () || objfile_has_full_symbols (o))
+  for (::objfile *o : this->separate_debug_objfiles ())
+    if (o->has_partial_symbols () || o->has_full_symbols ())
       return true;
 
   return false;
@@ -709,7 +708,7 @@ bool
 have_full_symbols (program_space *pspace)
 {
   for (objfile *ofp : pspace->objfiles ())
-    if (objfile_has_full_symbols (ofp))
+    if (ofp->has_full_symbols ())
       return true;
 
   return false;

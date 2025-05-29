@@ -1,6 +1,6 @@
 /* Common target dependent code for GDB on AArch64 systems.
 
-   Copyright (C) 2009-2024 Free Software Foundation, Inc.
+   Copyright (C) 2009-2025 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GDB.
@@ -949,7 +949,7 @@ aarch64_analyze_prologue_test (void)
 	}
     }
 }
-} // namespace selftests
+} /* namespace selftests */
 #endif /* GDB_SELF_TEST */
 
 /* Implement the "skip_prologue" gdbarch method.  */
@@ -2696,7 +2696,7 @@ aarch64_store_return_value (struct type *type, struct regcache *regs,
 	{
 	  /* Integral values greater than one word are stored in
 	     consecutive registers starting with r0.  This will always
-	     be a multiple of the regiser size.  */
+	     be a multiple of the register size.  */
 	  int len = type->length ();
 	  int regno = AARCH64_X0_REGNUM;
 
@@ -3289,6 +3289,9 @@ aarch64_pseudo_read_value (gdbarch *gdbarch, const frame_info_ptr &next_frame,
       && pseudo_offset < AARCH64_SVE_V0_REGNUM + 32)
     return aarch64_pseudo_read_value_1 (next_frame, pseudo_reg_num,
 					pseudo_offset - AARCH64_SVE_V0_REGNUM);
+
+  if (tdep->has_pauth () && pseudo_reg_num == tdep->ra_sign_state_regnum)
+    return value::zero (builtin_type (gdbarch)->builtin_uint64, lval_register);
 
   gdb_assert_not_reached ("regnum out of bound");
 }
@@ -4233,7 +4236,7 @@ aarch64_memtag_to_string (struct gdbarch *gdbarch, struct value *tag_value)
 
   CORE_ADDR tag = value_as_address (tag_value);
 
-  return string_printf ("0x%s", phex_nz (tag, sizeof (tag)));
+  return string_printf ("0x%s", phex_nz (tag));
 }
 
 /* See aarch64-tdep.h.  */
@@ -4341,7 +4344,7 @@ aarch64_initialize_sme_pseudo_names (struct gdbarch *gdbarch,
 }
 
 /* Initialize the current architecture based on INFO.  If possible,
-   re-use an architecture from ARCHES, which is a list of
+   reuse an architecture from ARCHES, which is a list of
    architectures already created during this debugging session.
 
    Called e.g. at program startup, when reading a core file, and when
@@ -5200,9 +5203,9 @@ aarch64_record_asimd_load_store (aarch64_insn_decode_record *aarch64_insn_r)
   CORE_ADDR address;
   uint64_t addr_offset = 0;
   uint32_t record_buf[24];
-  uint64_t record_buf_mem[24];
+  std::vector<uint64_t> record_buf_mem;
   uint32_t reg_rn, reg_rt;
-  uint32_t reg_index = 0, mem_index = 0;
+  uint32_t reg_index = 0;
   uint8_t opcode_bits, size_bits;
 
   reg_rt = bits (aarch64_insn_r->aarch64_insn, 0, 4);
@@ -5265,8 +5268,8 @@ aarch64_record_asimd_load_store (aarch64_insn_decode_record *aarch64_insn_r)
 		record_buf[reg_index++] = reg_rt + AARCH64_V0_REGNUM;
 	      else
 		{
-		  record_buf_mem[mem_index++] = esize / 8;
-		  record_buf_mem[mem_index++] = address + addr_offset;
+		  record_buf_mem.push_back (esize / 8);
+		  record_buf_mem.push_back (address + addr_offset);
 		}
 	      addr_offset = addr_offset + (esize / 8);
 	      reg_rt = (reg_rt + 1) % 32;
@@ -5337,8 +5340,8 @@ aarch64_record_asimd_load_store (aarch64_insn_decode_record *aarch64_insn_r)
 		  record_buf[reg_index++] = reg_tt + AARCH64_V0_REGNUM;
 		else
 		  {
-		    record_buf_mem[mem_index++] = esize / 8;
-		    record_buf_mem[mem_index++] = address + addr_offset;
+		    record_buf_mem.push_back (esize / 8);
+		    record_buf_mem.push_back (address + addr_offset);
 		  }
 		addr_offset = addr_offset + (esize / 8);
 		reg_tt = (reg_tt + 1) % 32;
@@ -5350,9 +5353,9 @@ aarch64_record_asimd_load_store (aarch64_insn_decode_record *aarch64_insn_r)
     record_buf[reg_index++] = reg_rn;
 
   aarch64_insn_r->reg_rec_count = reg_index;
-  aarch64_insn_r->mem_rec_count = mem_index / 2;
+  aarch64_insn_r->mem_rec_count = record_buf_mem.size () / 2;
   MEM_ALLOC (aarch64_insn_r->aarch64_mems, aarch64_insn_r->mem_rec_count,
-	     record_buf_mem);
+	     record_buf_mem.data ());
   REG_ALLOC (aarch64_insn_r->aarch64_regs, aarch64_insn_r->reg_rec_count,
 	     record_buf);
   return AARCH64_RECORD_SUCCESS;
@@ -5943,7 +5946,7 @@ aarch64_process_record_test (void)
   deallocate_reg_mem (&aarch64_record);
 }
 
-} // namespace selftests
+} /* namespace selftests */
 #endif /* GDB_SELF_TEST */
 
 /* Parse the current instruction and record the values of the registers and

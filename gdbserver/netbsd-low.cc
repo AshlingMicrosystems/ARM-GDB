@@ -1,4 +1,4 @@
-/* Copyright (C) 2020-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -453,7 +453,10 @@ netbsd_process_target::detach (process_info *process)
 void
 netbsd_process_target::mourn (struct process_info *proc)
 {
-  proc->for_each_thread (remove_thread);
+  proc->for_each_thread ([proc] (thread_info *thread)
+    {
+      proc->remove_thread (thread);
+    });
 
   remove_process (proc);
 }

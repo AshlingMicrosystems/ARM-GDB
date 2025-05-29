@@ -1,6 +1,6 @@
 /* Generic symbol file reading for the GNU debugger, GDB.
 
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    Contributed by Cygnus Support, using pieces from other GDB modules.
 
@@ -1101,7 +1101,7 @@ symbol_file_add_with_addrs (const gdb_bfd_ref_ptr &abfd, const char *name,
      no separate debug file.  If there is a separate debug file which
      does not have symbols, we'll have emitted this message for that
      file, and so printing it twice is just redundant.  */
-  if (should_print && !objfile_has_symbols (objfile)
+  if (should_print && !objfile->has_symbols ()
       && objfile->separate_debug_objfile == nullptr)
     gdb_printf (_("(No debugging symbols found in %ps)\n"),
 		styled_string (file_name_style.style (), name));
@@ -2323,7 +2323,7 @@ add_symbol_file_command (const char *args, int from_tty)
 
   objf = symbol_file_add (filename.get (), add_flags, &section_addrs,
 			  flags);
-  if (!objfile_has_symbols (objf) && objf->per_bfd->minimal_symbol_count <= 0)
+  if (!objf->has_symbols () && objf->per_bfd->minimal_symbol_count <= 0)
     warning (_("newly-added symbol file \"%ps\" does not provide any symbols"),
 	     styled_string (file_name_style.style (), filename.get ()));
 
@@ -2662,7 +2662,7 @@ reread_symbols (int from_tty)
 	      objfile->expand_all_symtabs ();
 	    }
 
-	  if (!objfile_has_symbols (objfile))
+	  if (!objfile->has_symbols ())
 	    {
 	      gdb_stdout->wrap_here (0);
 	      gdb_printf (_("(no debugging symbols found)\n"));
@@ -3035,7 +3035,7 @@ section_is_mapped (struct obj_section *osect)
     case ovly_off:
       return 0;			/* overlay debugging off */
     case ovly_auto:		/* overlay debugging automatic */
-      /* Unles there is a gdbarch_overlay_update function,
+      /* Unless there is a gdbarch_overlay_update function,
 	 there's really nothing useful to do here (can't really go auto).  */
       gdbarch = osect->objfile->arch ();
       if (gdbarch_overlay_update_p (gdbarch))
@@ -3761,14 +3761,13 @@ symfile_free_objfile (struct objfile *objfile)
    See quick_symbol_functions.expand_symtabs_matching for details.  */
 
 bool
-expand_symtabs_matching
-  (gdb::function_view<expand_symtabs_file_matcher_ftype> file_matcher,
-   const lookup_name_info &lookup_name,
-   gdb::function_view<expand_symtabs_symbol_matcher_ftype> symbol_matcher,
-   gdb::function_view<expand_symtabs_exp_notify_ftype> expansion_notify,
-   block_search_flags search_flags,
-   domain_search_flags domain,
-   gdb::function_view<expand_symtabs_lang_matcher_ftype> lang_matcher)
+expand_symtabs_matching (expand_symtabs_file_matcher file_matcher,
+			 const lookup_name_info &lookup_name,
+			 expand_symtabs_symbol_matcher symbol_matcher,
+			 expand_symtabs_expansion_listener expansion_notify,
+			 block_search_flags search_flags,
+			 domain_search_flags domain,
+			 expand_symtabs_lang_matcher lang_matcher)
 {
   for (objfile *objfile : current_program_space->objfiles ())
     if (!objfile->expand_symtabs_matching (file_matcher,
@@ -3787,8 +3786,7 @@ expand_symtabs_matching
    See quick_symbol_functions.map_symbol_filenames for details.  */
 
 void
-map_symbol_filenames (gdb::function_view<symbol_filename_ftype> fun,
-		      bool need_fullname)
+map_symbol_filenames (symbol_filename_listener fun, bool need_fullname)
 {
   for (objfile *objfile : current_program_space->objfiles ())
     objfile->map_symbol_filenames (fun, need_fullname);

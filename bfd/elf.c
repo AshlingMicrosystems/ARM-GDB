@@ -5009,8 +5009,8 @@ _bfd_elf_map_sections_to_segments (bfd *abfd,
 	  && need_layout != NULL
 	  && bed->size_relative_relocs
 	  && !bed->size_relative_relocs (info, need_layout))
-	info->callbacks->einfo
-	  (_("%F%P: failed to size relative relocations\n"));
+	info->callbacks->fatal
+	  (_("%P: failed to size relative relocations\n"));
     }
 
   if (no_user_phdrs && bfd_count_sections (abfd) != 0)
@@ -5921,8 +5921,7 @@ assign_file_positions_for_load_sections (bfd *abfd,
       asection **secpp;
       bfd_vma off_adjust;  /* Octets.  */
       bool no_contents;
-      bfd_size_type p_align;
-      bool p_align_p;
+      bfd_size_type align_pagesize;
 
       /* An ELF segment (described by Elf_Internal_Phdr) may contain a
 	 number of sections with contents contributing to both p_filesz
@@ -5933,8 +5932,6 @@ assign_file_positions_for_load_sections (bfd *abfd,
       p = phdrs + m->idx;
       p->p_type = m->p_type;
       p->p_flags = m->p_flags;
-      p_align = bed->p_align;
-      p_align_p = false;
 
       if (m->count == 0)
 	p->p_vaddr = m->p_vaddr_offset * opb;
@@ -5948,6 +5945,7 @@ assign_file_positions_for_load_sections (bfd *abfd,
       else
 	p->p_paddr = (m->sections[0]->lma + m->p_vaddr_offset) * opb;
 
+      align_pagesize = 0;
       if (p->p_type == PT_LOAD
 	  && (abfd->flags & D_PAGED) != 0)
 	{
@@ -5961,15 +5959,17 @@ assign_file_positions_for_load_sections (bfd *abfd,
 	     segment.  */
 	  if (m->p_align_valid)
 	    maxpagesize = m->p_align;
-	  else if (p_align != 0
+	  else if (bed->p_align != 0
 		   && (link_info == NULL
 		       || !link_info->maxpagesize_is_set))
-	    /* Set p_align to the default p_align value while laying
-	       out segments aligning to the maximum page size or the
-	       largest section alignment.  The run-time loader can
-	       align segments to the default p_align value or the
-	       maximum page size, depending on system page size.  */
-	    p_align_p = true;
+	    /* We will lay out this binary using maxpagesize but set
+	       p->p_align later to the possibly smaller bed->p_align.
+	       The run-time loader will then be able to load this
+	       binary when the system page size is maxpagesize, but if
+	       the system page size is smaller can use p->p_align.
+	       In either case p->p_align will be increased if
+	       necessary to match section alignment.  */
+	    align_pagesize = bed->p_align;
 
 	  p->p_align = maxpagesize;
 	}
@@ -6002,22 +6002,20 @@ assign_file_positions_for_load_sections (bfd *abfd,
 		    align_power = secalign;
 		}
 	      align = (bfd_size_type) 1 << align_power;
+	      /* If a section requires alignment higher than the
+		 minimum p_align value, don't reduce a maxpagesize
+		 p->p_align set earlier in this function.  */
+	      if (align > bed->p_align)
+		align_pagesize = 0;
 	      if (align < maxpagesize)
-		{
-		  /* If a section requires alignment higher than the
-		     default p_align value, don't set p_align to the
-		     default p_align value.  */
-		  if (align > p_align)
-		    p_align_p = false;
-		  align = maxpagesize;
-		}
+		align = maxpagesize;
 	      else
 		{
 		  /* If a section requires alignment higher than the
 		     maximum page size, set p_align to the section
 		     alignment.  */
-		  p_align_p = true;
-		  p_align = align;
+		  if ((abfd->flags & D_PAGED) != 0)
+		    p->p_align = align;
 		}
 	    }
 
@@ -6172,7 +6170,10 @@ assign_file_positions_for_load_sections (bfd *abfd,
 		    align = p->p_align;
 		  if (align < 1)
 		    align = 1;
-		  p->p_offset = off % align;
+		  /* Avoid p_offset of zero, which might be wrongly
+		     interpreted as the segment being the first one,
+		     containing the file header.  PR32763.  */
+		  p->p_offset = (off + align - 1) % align + 1;
 		}
 	    }
 	  else
@@ -6185,6 +6186,9 @@ assign_file_positions_for_load_sections (bfd *abfd,
 	      p->p_memsz += adjust;
 	    }
 	}
+
+      if (align_pagesize)
+	p->p_align = align_pagesize;
 
       /* Set up p_filesz, p_memsz, p_align and p_flags from the section
 	 maps.  Set filepos for sections in PT_LOAD segments, and in
@@ -6288,26 +6292,27 @@ assign_file_positions_for_load_sections (bfd *abfd,
 	    }
 	  else
 	    {
-	      if (p->p_type == PT_LOAD)
+	      if (this_hdr->sh_type == SHT_NOBITS
+		  && (this_hdr->sh_flags & SHF_TLS) != 0
+		  && this_hdr->sh_offset == 0)
+		{
+		  /* Set sh_offset for .tbss sections to their nominal
+		     offset after aligning.  They are not loaded from
+		     disk so the value doesn't really matter, except
+		     when the .tbss section is the first one in a
+		     PT_TLS segment.  In that case it sets the
+		     p_offset for the PT_TLS segment, which according
+		     to the ELF gABI ought to satisfy
+		     p_offset % p_align == p_vaddr % p_align.  */
+		  bfd_vma adjust = vma_page_aligned_bias (this_hdr->sh_addr,
+							  off, align);
+		  this_hdr->sh_offset = sec->filepos = off + adjust;
+		}
+	      else if (p->p_type == PT_LOAD)
 		{
 		  this_hdr->sh_offset = sec->filepos = off;
 		  if (this_hdr->sh_type != SHT_NOBITS)
 		    off += this_hdr->sh_size;
-		}
-	      else if (this_hdr->sh_type == SHT_NOBITS
-		       && (this_hdr->sh_flags & SHF_TLS) != 0
-		       && this_hdr->sh_offset == 0)
-		{
-		  /* This is a .tbss section that didn't get a PT_LOAD.
-		     (See _bfd_elf_map_sections_to_segments "Create a
-		     final PT_LOAD".)  Set sh_offset to the value it
-		     would have if we had created a zero p_filesz and
-		     p_memsz PT_LOAD header for the section.  This
-		     also makes the PT_TLS header have the same
-		     p_offset value.  */
-		  bfd_vma adjust = vma_page_aligned_bias (this_hdr->sh_addr,
-							  off, align);
-		  this_hdr->sh_offset = sec->filepos = off + adjust;
 		}
 
 	      if (this_hdr->sh_type != SHT_NOBITS)
@@ -6404,9 +6409,6 @@ assign_file_positions_for_load_sections (bfd *abfd,
 		  print_segment_map (m);
 		}
 	    }
-
-	  if (p_align_p)
-	    p->p_align = p_align;
 	}
     }
 
@@ -10390,6 +10392,12 @@ elfcore_grok_xstatereg (bfd *abfd, Elf_Internal_Note *note)
 }
 
 static bool
+elfcore_grok_sspreg (bfd *abfd, Elf_Internal_Note *note)
+{
+  return elfcore_make_note_pseudosection (abfd, ".reg-ssp", note);
+}
+
+static bool
 elfcore_grok_ppc_vmx (bfd *abfd, Elf_Internal_Note *note)
 {
   return elfcore_make_note_pseudosection (abfd, ".reg-ppc-vmx", note);
@@ -11081,6 +11089,13 @@ elfcore_grok_note (bfd *abfd, Elf_Internal_Note *note)
       if (note->namesz == 6
 	  && strcmp (note->namedata, "LINUX") == 0)
 	return elfcore_grok_xstatereg (abfd, note);
+      else
+	return true;
+
+    case NT_X86_SHSTK:		/* Linux CET extension.  */
+      if (note->namesz == 6
+	  && strcmp (note->namedata, "LINUX") == 0)
+	return elfcore_grok_sspreg (abfd, note);
       else
 	return true;
 
@@ -12534,6 +12549,15 @@ elfcore_write_xstatereg (bfd *abfd, char *buf, int *bufsiz,
 			     note_name, NT_X86_XSTATE, xfpregs, size);
 }
 
+static char *
+elfcore_write_sspreg (bfd *abfd, char *buf, int *bufsiz,
+		      const void *ssp, int size)
+{
+  const char *note_name = "LINUX";
+  return elfcore_write_note (abfd, buf, bufsiz,
+			     note_name, NT_X86_SHSTK, ssp, size);
+}
+
 char *
 elfcore_write_x86_segbases (bfd *abfd, char *buf, int *bufsiz,
 			    const void *regs, int size)
@@ -13129,6 +13153,8 @@ elfcore_write_register_note (bfd *abfd,
     return elfcore_write_xstatereg (abfd, buf, bufsiz, data, size);
   if (strcmp (section, ".reg-x86-segbases") == 0)
     return elfcore_write_x86_segbases (abfd, buf, bufsiz, data, size);
+  if (strcmp (section, ".reg-ssp") == 0)
+    return elfcore_write_sspreg (abfd, buf, bufsiz, data, size);
   if (strcmp (section, ".reg-ppc-vmx") == 0)
     return elfcore_write_ppc_vmx (abfd, buf, bufsiz, data, size);
   if (strcmp (section, ".reg-ppc-vsx") == 0)

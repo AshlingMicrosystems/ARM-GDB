@@ -5038,7 +5038,7 @@ ppc_ref (int ignore ATTRIBUTE_UNUSED)
 	{
 	  input_line_pointer++;
 	  SKIP_WHITESPACE ();
-	  if (is_end_of_line[(unsigned char) *input_line_pointer])
+	  if (is_end_of_stmt (*input_line_pointer))
 	    {
 	      as_bad (_("missing symbol name"));
 	      ignore_rest_of_line ();
@@ -5796,7 +5796,7 @@ ppc_tc (int ignore ATTRIBUTE_UNUSED)
 	symbol_set_frag (label, symbol_get_frag (sym));
 	S_SET_VALUE (label, S_GET_VALUE (sym));
 
-	while (! is_end_of_line[(unsigned char) *input_line_pointer])
+	while (! is_end_of_stmt (*input_line_pointer))
 	  ++input_line_pointer;
 
 	return;
@@ -6140,9 +6140,6 @@ ppc_frob_symbol (symbolS *sym)
 
   if (SF_GET_FUNCTION (sym))
     {
-      /* Make sure coff_last_function is reset. Otherwise, we won't create
-         the auxent for the next function.  */
-      coff_last_function = 0;
       ppc_last_function = sym;
       if (symbol_get_tc (sym)->u.size != (symbolS *) NULL)
 	{
@@ -6170,10 +6167,6 @@ ppc_frob_symbol (symbolS *sym)
 	{
 	  set_end = ppc_last_function;
 	  ppc_last_function = NULL;
-
-	  /* We don't have a C_EFCN symbol, but we need to force the
-	     COFF backend to believe that it has seen one.  */
-	  coff_last_function = NULL;
 	}
     }
 
@@ -6894,6 +6887,9 @@ ppc_handle_align (segT sec, struct frag *fragP)
 {
   valueT count = (fragP->fr_next->fr_address
 		  - (fragP->fr_address + fragP->fr_fix));
+  if (count == 0)
+    return;
+
   char *dest = fragP->fr_literal + fragP->fr_fix;
   enum ppc_nop_encoding_for_rs_align_code nop_select = *dest & 0xff;
 
@@ -6901,8 +6897,7 @@ ppc_handle_align (segT sec, struct frag *fragP)
      We could pad with zeros up to an instruction boundary then follow
      with nops but odd counts indicate data in an executable section
      so padding with zeros is most appropriate.  */
-  if (count == 0
-      || (nop_select == PPC_NOP_VLE ? (count & 1) != 0 : (count & 3) != 0))
+  if (nop_select == PPC_NOP_VLE ? (count & 1) != 0 : (count & 3) != 0)
     {
       *dest = 0;
       return;
@@ -6920,28 +6915,13 @@ ppc_handle_align (segT sec, struct frag *fragP)
 
       if (count > 4 * nop_limit && count < 0x2000000)
 	{
-	  struct frag *rest;
-
-	  /* Make a branch, then follow with nops.  Insert another
-	     frag to handle the nops.  */
+	  /* Make a branch, then follow with nops.  */
 	  md_number_to_chars (dest, 0x48000000 + count, 4);
+	  dest += 4;
+	  fragP->fr_fix += 4;
 	  count -= 4;
 	  if (count == 0)
 	    return;
-
-	  segment_info_type *seginfo = seg_info (sec);
-	  struct obstack *ob = &seginfo->frchainP->frch_obstack;
-	  rest = frag_alloc (ob, 4);
-	  memcpy (rest, fragP, SIZEOF_STRUCT_FRAG);
-	  fragP->fr_next = rest;
-	  fragP = rest;
-	  rest->fr_address += rest->fr_fix + 4;
-	  rest->fr_fix = 0;
-	  /* If we leave the next frag as rs_align_code we'll come here
-	     again, resulting in a bunch of branches rather than a
-	     branch followed by nops.  */
-	  rest->fr_type = rs_align;
-	  dest = rest->fr_literal;
 	}
 
       md_number_to_chars (dest, 0x60000000, 4);

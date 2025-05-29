@@ -1,5 +1,5 @@
 dnl Autoconf configure snippets for common.
-dnl Copyright (C) 1995-2024 Free Software Foundation, Inc.
+dnl Copyright (C) 1995-2025 Free Software Foundation, Inc.
 dnl
 dnl This file is part of GDB.
 dnl 
@@ -292,7 +292,7 @@ AC_CHECK_HEADERS([ \
 ])
 
 dnl Check that the provided value ($1) is either "yes" or "no".  If not,
-dnl emit an error message mentionning the configure option $2, and abort
+dnl emit an error message mentioning the configure option $2, and abort
 dnl the script.
 AC_DEFUN([GDB_CHECK_YES_NO_VAL],
 	 [
@@ -306,7 +306,7 @@ AC_DEFUN([GDB_CHECK_YES_NO_VAL],
 	  ])
 
 dnl Check that the provided value ($1) is either "yes", "no" or "auto".  If not,
-dnl emit an error message mentionning the configure option $2, and abort
+dnl emit an error message mentioning the configure option $2, and abort
 dnl the script.
 AC_DEFUN([GDB_CHECK_YES_NO_AUTO_VAL],
 	 [

@@ -1653,6 +1653,19 @@ write_contents (bfd *abfd ATTRIBUTE_UNUSED,
       offsetT count;
 
       gas_assert (f->fr_type == rs_fill || f->fr_type == rs_fill_nop);
+
+      count = f->fr_offset;
+      fill_literal = f->fr_literal + f->fr_fix;
+      if (f->fr_type == rs_fill_nop && count > 0)
+	{
+	  md_generate_nops (f, fill_literal, count, *fill_literal);
+	  /* md_generate_nops updates fr_fix and fr_var.  */
+	  f->fr_offset = (f->fr_next->fr_address - f->fr_address
+			  - f->fr_fix) / f->fr_var;
+	  count = f->fr_offset;
+	  fill_literal = f->fr_literal + f->fr_fix;
+	}
+
       if (f->fr_fix)
 	{
 	  x = bfd_set_section_contents (stdoutput, sec,
@@ -1671,39 +1684,6 @@ write_contents (bfd *abfd ATTRIBUTE_UNUSED,
 	}
 
       fill_size = f->fr_var;
-      count = f->fr_offset;
-      fill_literal = f->fr_literal + f->fr_fix;
-
-      if (f->fr_type == rs_fill_nop)
-	{
-	  gas_assert (count >= 0 && fill_size == 1);
-	  if (count > 0)
-	    {
-	      char *buf = xmalloc (count);
-	      md_generate_nops (f, buf, count, *fill_literal);
-	      x = bfd_set_section_contents
-		(stdoutput, sec, buf, (file_ptr) offset,
-		 (bfd_size_type) count);
-	      if (!x)
-		as_fatal (ngettext ("can't fill %ld byte "
-				    "in section %s of %s: '%s'",
-				    "can't fill %ld bytes "
-				    "in section %s of %s: '%s'",
-				    (long) count),
-			  (long) count,
-			  bfd_section_name (sec),
-			  bfd_get_filename (stdoutput),
-			  bfd_errmsg (bfd_get_error ()));
-	      offset += count;
-#ifndef NO_LISTING
-	      if (listing & LISTING_LISTING)
-		f->fr_opcode = buf;
-	      else
-#endif
-		free (buf);
-	    }
-	  continue;
-	}
 
       gas_assert (count >= 0);
       if (fill_size && count)
@@ -1804,9 +1784,8 @@ set_symtab (void)
   if (nsyms)
     {
       int i;
-      bfd_size_type amt = (bfd_size_type) nsyms * sizeof (asymbol *);
 
-      asympp = (asymbol **) bfd_alloc (stdoutput, amt);
+      asympp = notes_alloc (nsyms * sizeof (asymbol *));
       symp = symbol_rootP;
       for (i = 0; i < nsyms; symp = symbol_next (symp))
 	if (!symbol_removed_p (symp)
@@ -1919,27 +1898,27 @@ subsegs_finish (void)
 }
 
 #ifdef OBJ_ELF
+
 static void
 create_obj_attrs_section (void)
 {
-  segT s;
-  char *p;
-  offsetT size;
-  const char *name;
-
-  size = bfd_elf_obj_attr_size (stdoutput);
+  offsetT size = bfd_elf_obj_attr_size (stdoutput);
   if (size == 0)
     return;
 
-  name = get_elf_backend_data (stdoutput)->obj_attrs_section;
-  if (!name)
+  const char *name = get_elf_backend_data (stdoutput)->obj_attrs_section;
+  if (name == NULL)
+    /* Note: .gnu.attributes is different from GNU_BUILD_ATTRS_SECTION_NAME
+       (a.k.a .gnu.build.attributes). The first one seems to be used by some
+       backends like PowerPC to store the build attributes. The second one is
+       used to store build notes.  */
     name = ".gnu.attributes";
-  s = subseg_new (name, 0);
+  segT s = subseg_new (name, 0);
   elf_section_type (s)
     = get_elf_backend_data (stdoutput)->obj_attrs_section_type;
   bfd_set_section_flags (s, SEC_READONLY | SEC_DATA);
   frag_now_fix ();
-  p = frag_more (size);
+  char *p = frag_more (size);
   bfd_elf_set_obj_attr_contents (stdoutput, (bfd_byte *)p, size);
 
   subsegs_finish_section (s);

@@ -322,7 +322,7 @@ spec_match (const struct wildcard_spec *spec, const char *name)
 }
 
 static char *
-ldirname (const char *name)
+stat_ldirname (const char *name)
 {
   const char *base = lbasename (name);
 
@@ -1266,7 +1266,7 @@ new_afile (const char *name,
       /* If name is a relative path, search the directory of the current linker
 	 script first. */
       if (from_filename && !IS_ABSOLUTE_PATH (name))
-	p->extra_search_path = ldirname (from_filename);
+	p->extra_search_path = stat_ldirname (from_filename);
       p->flags.real = true;
       p->flags.search_dirs = true;
       break;
@@ -2486,11 +2486,18 @@ lang_map (void)
 }
 
 static bool
+is_defined (struct bfd_link_hash_entry *h)
+{
+  return h != NULL
+    && (h->type == bfd_link_hash_defined
+	|| h->type == bfd_link_hash_defweak);
+}
+
+static bool
 sort_def_symbol (struct bfd_link_hash_entry *hash_entry,
 		 void *info ATTRIBUTE_UNUSED)
 {
-  if ((hash_entry->type == bfd_link_hash_defined
-       || hash_entry->type == bfd_link_hash_defweak)
+  if (is_defined (hash_entry)
       && hash_entry->u.def.section->owner != link_info.output_bfd
       && hash_entry->u.def.section->owner != NULL)
     {
@@ -2827,8 +2834,10 @@ lang_add_section (lang_statement_list_type *ptr,
       /* Unfortunately GNU ld has managed to evolve two different
 	 meanings to NOLOAD in scripts.  ELF gets a .bss style noload,
 	 alloc, no contents section.  All others get a noload, noalloc
-	 section.  */
-      if (bfd_get_flavour (link_info.output_bfd) == bfd_target_elf_flavour)
+	 section.  Unlike a .bss style section, if a note section is
+	 marked as NOLOAD, also clear SEC_ALLOC.  */
+      if (bfd_get_flavour (link_info.output_bfd) == bfd_target_elf_flavour
+	  && elf_section_type (section) != SHT_NOTE)
 	flags &= ~SEC_HAS_CONTENTS;
       else
 	flags &= ~SEC_ALLOC;
@@ -3805,6 +3814,8 @@ ldlang_open_ctf (void)
   int any_ctf = 0;
   int err;
 
+  ld_start_phase (PHASE_CTF);
+
   LANG_FOR_EACH_INPUT_STATEMENT (file)
     {
       asection *sect;
@@ -3842,17 +3853,23 @@ ldlang_open_ctf (void)
   if (!any_ctf)
     {
       ctf_output = NULL;
+      ld_stop_phase (PHASE_CTF);
       return;
     }
 
   if ((ctf_output = ctf_create (&err)) != NULL)
-    return;
+    {
+      ld_stop_phase (PHASE_CTF);
+      return;
+    }
 
   einfo (_("%P: warning: CTF output not created: `%s'\n"),
 	 ctf_errmsg (err));
 
   LANG_FOR_EACH_INPUT_STATEMENT (errfile)
     ctf_close (errfile->the_ctf);
+
+  ld_stop_phase (PHASE_CTF);
 }
 
 /* Merge together CTF sections.  After this, only the symtab-dependent
@@ -3867,6 +3884,8 @@ lang_merge_ctf (void)
   if (!ctf_output)
     return;
 
+  ld_start_phase (PHASE_CTF);
+
   output_sect = bfd_get_section_by_name (link_info.output_bfd, ".ctf");
 
   /* If the section was discarded, don't waste time merging.  */
@@ -3880,6 +3899,8 @@ lang_merge_ctf (void)
 	  ctf_close (file->the_ctf);
 	  file->the_ctf = NULL;
 	}
+
+      ld_stop_phase (PHASE_CTF);
       return;
     }
 
@@ -3922,6 +3943,8 @@ lang_merge_ctf (void)
     }
   /* Output any lingering errors that didn't come from ctf_link.  */
   lang_ctf_errs_warnings (ctf_output);
+
+  ld_stop_phase (PHASE_CTF);
 }
 
 /* Let the emulation acquire strings from the dynamic strtab to help it optimize
@@ -3930,7 +3953,9 @@ lang_merge_ctf (void)
 void
 ldlang_ctf_acquire_strings (struct elf_strtab_hash *dynstrtab)
 {
+  ld_start_phase (PHASE_CTF);
   ldemul_acquire_strings_for_ctf (ctf_output, dynstrtab);
+  ld_stop_phase (PHASE_CTF);
 }
 
 /* Inform the emulation about the addition of a new dynamic symbol, in BFD
@@ -3952,16 +3977,24 @@ lang_write_ctf (int late)
   if (!ctf_output)
     return;
 
+  ld_start_phase (PHASE_CTF);
+
   if (late)
     {
       /* Emit CTF late if this emulation says it can do so.  */
       if (ldemul_emit_ctf_early ())
-	return;
+	{
+	  ld_stop_phase (PHASE_CTF);
+	  return;
+	}
     }
   else
     {
       if (!ldemul_emit_ctf_early ())
-	return;
+	{
+	  ld_stop_phase (PHASE_CTF);
+	  return;
+	}
     }
 
   /* Inform the emulation that all the symbols that will be received have
@@ -3996,6 +4029,8 @@ lang_write_ctf (int late)
 
   LANG_FOR_EACH_INPUT_STATEMENT (file)
     file->the_ctf = NULL;
+
+  ld_stop_phase (PHASE_CTF);
 }
 
 /* Write out the CTF section late, if the emulation needs that.  */
@@ -4156,9 +4191,7 @@ ldlang_check_require_defined_symbols (void)
 
       h = bfd_link_hash_lookup (link_info.hash, ptr->name,
 				false, false, true);
-      if (h == NULL
-	  || (h->type != bfd_link_hash_defined
-	      && h->type != bfd_link_hash_defweak))
+      if (! is_defined (h))
 	einfo(_("%X%P: required symbol `%s' not defined\n"), ptr->name);
     }
 }
@@ -4864,9 +4897,7 @@ print_assignment (lang_assignment_statement_type *assignment,
 
 	  h = bfd_link_hash_lookup (link_info.hash, assignment->exp->assign.dst,
 				    false, false, true);
-	  if (h != NULL
-	      && (h->type == bfd_link_hash_defined
-		  || h->type == bfd_link_hash_defweak))
+	  if (is_defined (h))
 	    {
 	      value = h->u.def.value;
 	      value += h->u.def.section->output_section->vma;
@@ -4911,8 +4942,7 @@ print_one_symbol (struct bfd_link_hash_entry *hash_entry, void *ptr)
 {
   asection *sec = (asection *) ptr;
 
-  if ((hash_entry->type == bfd_link_hash_defined
-       || hash_entry->type == bfd_link_hash_defweak)
+  if (is_defined (hash_entry)
       && sec == hash_entry->u.def.section)
     {
       print_spaces (SECTION_NAME_MAP_LENGTH);
@@ -5034,7 +5064,8 @@ print_input_section (asection *i, bool is_discarded)
     }
   print_spaces (SECTION_NAME_MAP_LENGTH - len);
 
-  if (i->output_section != NULL
+  if ((i->flags & SEC_EXCLUDE) == 0
+      && i->output_section != NULL
       && i->output_section->owner == link_info.output_bfd)
     addr = i->output_section->vma + i->output_offset;
   else
@@ -7205,9 +7236,7 @@ lang_end (void)
 	{
 	  h = bfd_link_hash_lookup (link_info.hash, sym->name,
 				    false, false, false);
-	  if (h != NULL
-	      && (h->type == bfd_link_hash_defined
-		  || h->type == bfd_link_hash_defweak)
+	  if (is_defined (h)
 	      && !bfd_is_const_section (h->u.def.section))
 	    break;
 	}
@@ -7226,9 +7255,11 @@ lang_end (void)
 
   h = bfd_link_hash_lookup (link_info.hash, entry_symbol.name,
 			    false, false, true);
-  if (h != NULL
-      && (h->type == bfd_link_hash_defined
-	  || h->type == bfd_link_hash_defweak)
+
+  if (! is_defined (h) || h->u.def.section->output_section == NULL)
+    h = ldemul_find_alt_start_symbol (&entry_symbol);
+
+  if (is_defined (h)
       && h->u.def.section->output_section != NULL)
     {
       bfd_vma val;
@@ -8545,12 +8576,16 @@ lang_process (void)
     {
       asection *found;
 
+      ld_start_phase (PHASE_MERGE);
+
       /* Merge SEC_MERGE sections.  This has to be done after GC of
 	 sections, so that GCed sections are not merged, but before
 	 assigning dynamic symbols, since removing whole input sections
 	 is hard then.  */
       if (!bfd_merge_sections (link_info.output_bfd, &link_info))
 	fatal (_("%P: bfd_merge_sections failed: %E\n"));
+
+      ld_stop_phase (PHASE_MERGE);
 
       /* Look for a text section and set the readonly attribute in it.  */
       found = bfd_get_section_by_name (link_info.output_bfd, ".text");
@@ -8689,6 +8724,7 @@ lang_add_wild (struct wildcard_spec *filespec,
   new_stmt = new_stat (lang_wild_statement, stat_ptr);
   new_stmt->filename = NULL;
   new_stmt->filenames_sorted = false;
+  new_stmt->filenames_reversed = false;
   new_stmt->any_specs_sorted = any_specs_sorted;
   new_stmt->section_flag_list = NULL;
   new_stmt->exclude_name_list = NULL;
@@ -8696,9 +8732,9 @@ lang_add_wild (struct wildcard_spec *filespec,
     {
       new_stmt->filename = filespec->name;
       new_stmt->filenames_sorted = (filespec->sorted == by_name || filespec->reversed);
+      new_stmt->filenames_reversed = filespec->reversed;
       new_stmt->section_flag_list = filespec->section_flag_list;
       new_stmt->exclude_name_list = filespec->exclude_name_list;
-      new_stmt->filenames_reversed = filespec->reversed;
     }
   new_stmt->section_list = section_list;
   new_stmt->keep_sections = keep_sections;

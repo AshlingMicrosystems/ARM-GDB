@@ -3,6 +3,10 @@
 
 *** Changes since GDB 16
 
+* Debugger Adapter Protocol changes
+
+  ** GDB now supports the "completions" request.
+
 * "set style" commands now supports numeric format for basic colors
   from 0 to 255 and #RRGGBB format for TrueColor.
 
@@ -26,6 +30,24 @@
 
 * Linux checkpoint code has been updated to work with multiple inferiors.
 
+* The gcore and gdb-add-index scripts now have a -v or --version
+  option, which prints the version number, and then exits.  As well as
+  a -h or --help option, which prints each options and a brief
+  description.
+
+* On systems that support linkage namespaces, the output of the command
+  "info sharedlibraries" may add one more column, NS, which identifies the
+  namespace into which the library was loaded, if more than one namespace
+  is active.
+
+* New built-in convenience variables $_active_linker_namespaces and
+  $_current_linker_namespace.  These show the number of active linkage
+  namespaces, and the namespace to which the current location belongs to.
+  In systems that don't support linkage namespaces, these always return 1
+  and [[0]] respectively.
+
+* Add record full support for rv64gc architectures
+
 * New commands
 
 maintenance check psymtabs
@@ -34,11 +56,71 @@ maintenance check psymtabs
 maintenance check symtabs
   Renamed from maintenance check-symtabs
 
+maintenance canonicalize
+  Show the canonical form of a C++ name.
+
 set riscv numeric-register-names on|off
 show riscv numeric-register-names
   Controls whether GDB refers to risc-v registers by their numeric names
   (e.g 'x1') or their abi names (e.g. 'ra').
   Defaults to 'off', matching the old behaviour (abi names).
+
+set style emoji on|off|auto
+show style emoji
+  Controls whether GDB can display emoji.  The default is "auto",
+  which means emoji will be displayed in some situations when
+  the host charset is UTF-8.
+
+set style warning-prefix STRING
+set style error-prefix STRING
+  These commands control the prefix that is printed before warnings
+  and errors, respectively.  This functionality is intended for use
+  with emoji display, and so the prefixes are only displayed if emoji
+  styling is enabled.
+
+info linker-namespaces
+info linker-namespaces [[N]]
+  Print information about the given linker namespace (identified as N),
+  or about all the namespaces if no argument is given.
+
+* Changed commands
+
+info sharedlibrary
+  On Linux and FreeBSD, the addresses shown in the output of this
+  command are now for the full memory range allocated to the shared
+  library.
+
+info threads [-gid] [-stopped] [-running] [ID]...
+  If no threads match the given ID(s) or filter options, GDB now prints
+
+    No threads matched.
+
+  without printing the provided arguments.  The newly added '-stopped'
+  option makes GDB list the stopped threads only.  Similarly,
+  '-running' makes GDB list the running threads only.  If both options
+  are given together, both stopped and running threads are listed.
+  These new flags can be useful to get a reduced list when there is a
+  large number of threads.
+
+* GDB-internal Thread Local Storage (TLS) support
+
+  ** Linux targets for the x86_64, aarch64, ppc64, s390x, and riscv
+     architectures now have GDB-internal support for TLS address
+     lookup in addition to that traditionally provided by the
+     libthread_db library.  This internal support works for programs
+     linked against either the GLIBC or MUSL C libraries.  For
+     programs linked against MUSL, this new internal support provides
+     new debug functionality, allowing access to TLS variables, due to
+     the fact that MUSL does not implement the libthread_db library.
+     Internal TLS support is also useful in cross-debugging
+     situations, debugging statically linked binaries, and debugging
+     programs linked against GLIBC 2.33 and earlier, but which are not
+     linked against libpthread.
+
+  ** The command 'maint set force-internal-tls-address-lookup on' may
+     be used to force the internal TLS lookup mechanisms to be used.
+     Otherwise, TLS lookup via libthread_db will still be preferred,
+     when available.
 
 * Python API
 
@@ -47,12 +129,36 @@ show riscv numeric-register-names
   ** New constant gdb.PARAM_COLOR represents color type of a
      gdb.Parameter.value.  Parameter's value is gdb.Color instance.
 
+  ** The memory_source argument (the second argument) has been removed
+     from gdb.disassembler.builtin_disassemble.  This argument was
+     never used by GDB, and was added by mistake.  The unused argument
+     was never documented in the GDB manual, so users should not have
+     been using it.
+
+  ** gdb.execute has an additional 'styling' argument.  When True, then
+     output will be styled.  The default for this argument is True
+     when output is going to standard output, and False when output is
+     going to a string.
+
+  ** Setting the documentation string (__doc__) of a gdb.Parameter
+     sub-class to the empty string, means GDB will only display the
+     set_doc or show_doc strings in the set/show help output.
+
+  ** New gdb.ParameterPrefix class.  This can be used to create 'set'
+     and 'show' gdb.Command prefixes, suitable for use with new
+     gdb.Parameters.
+
 * Guile API
 
   ** New type <gdb:color> for dealing with colors.
 
   ** New constant PARAM_COLOR represents color type of a value
      of a <gdb:parameter> object.  Parameter's value is <gdb::color> instance.
+
+  ** Eliding the #:doc string from make-parameter now means that GDB
+     will use a default documentation string.  Setting #:doc to the
+     empty string for make-parameter means GDB will only display the
+     #:set_doc or #:show_doc strings in the set/show help output.
 
 * New remote packets
 
@@ -61,6 +167,14 @@ binary-upload in qSupported reply
   then GDB will, where possible, make use of the 'x' packet.  If the
   stub doesn't report this feature supported, then GDB will not use
   the 'x' packet.
+
+* Changed remote packets
+
+qXfer:threads:read
+  The XML that is sent as a response can now include an "id_str"
+  attribute for a thread element.  The attribute indicates what GDB
+  should print as the target ID of the thread, for example in the
+  "info threads" command or when switching to the thread.
 
 * MI changes
 
@@ -76,6 +190,10 @@ binary-upload in qSupported reply
 
 * Support for stabs debugging format and the a.out/dbx object format is
   deprecated, and will be removed in GDB 18.
+
+* A new configure option was added, allowing support for the compile
+  subsystem to be disabled at configure time, in the form of
+  --disable-gdb-compile.
 
 *** Changes in GDB 16
 
@@ -279,7 +397,7 @@ maintenance print remote-registers
   which registers were included in the last stop reply packet received by
   GDB.
 
-mainenance info frame-unwinders
+maintenance info frame-unwinders
   Add a CLASS column to the output.  This class is a somewhat arbitrary
   grouping of unwinders, based on which area of GDB adds the unwinder.
   Also add an ENABLED column, that will show if the unwinder is enabled
@@ -337,7 +455,7 @@ generate-core-file
 
 maintenance info line-table
   Add an EPILOGUE-BEGIN column to the output of the command.  It indicates
-  if the line is considered the start of the epilgoue, and thus a point at
+  if the line is considered the start of the epilogue, and thus a point at
   which the frame can be considered destroyed.
 
 set unwindonsignal on|off
@@ -598,7 +716,7 @@ qIsAddressTagged
 
 * For both the break and watch commands, it is now invalid to use both
   the 'thread' and 'task' keywords within the same command.  For
-  example the following commnds will now give an error:
+  example the following commands will now give an error:
     break foo thread 1 task 1
     watch var thread 2 task 3
 
@@ -2196,7 +2314,7 @@ info connections
 
 help
   The "help" command uses the title style to enhance the
-  readibility of its output by styling the classes and
+  readability of its output by styling the classes and
   command names.
 
 apropos [-v] REGEXP
@@ -2551,7 +2669,7 @@ info variables [-q] [-t TYPEREGEXP] [NAMEREGEXP]
   These commands can now print only the searched entities
   matching the provided regexp(s), giving a condition
   on the entity names or entity types.  The flag -q disables
-  printing headers or informations messages.
+  printing headers or information messages.
 
 info functions
 info types
@@ -4085,7 +4203,7 @@ show mi-async
   commands have been replaced with "target native".  The QNX/NTO port
   leaves the "procfs" target in place and adds a "native" target for
   consistency with other ports.  The impact on users should be minimal
-  as these commands previously either throwed an error, or were
+  as these commands previously either threw an error, or were
   no-ops.  The target's name is visible in the output of the following
   commands: "help target", "info target", "info files", "maint print
   target-stack".
@@ -4812,7 +4930,7 @@ qXfer:btrace:read
   ** "dprintf location,format,args..." creates a dynamic printf, which
      is basically a breakpoint that does a printf and immediately
      resumes your program's execution, so it is like a printf that you
-     can insert dynamically at runtime instead of at compiletime.
+     can insert dynamically at runtime instead of at compile time.
 
   ** "set print symbol"
      "show print symbol"
@@ -5718,8 +5836,8 @@ ARM Symbian			arm*-*-symbianelf*
 
   GDB now supports importing of namespaces in C++.  This enables the
   user to inspect variables from imported namespaces.  Support for
-  namepace aliasing has also been added.  So, if a namespace is 
-  aliased in the current scope (e.g. namepace C=A; ) the user can 
+  namespace aliasing has also been added.  So, if a namespace is
+  aliased in the current scope (e.g. namespace C=A; ) the user can
   print variables using the alias (e.g. (gdb) print C::x).
 
   ** Bug Fixes
@@ -7452,7 +7570,7 @@ for DW_OP_piece is still missing).
 
 A number of long standing bugs that caused GDB to die while starting a
 Java application have been fixed.  GDB's Java support is now
-considered "useable".
+considered "usable".
 
 * GNU/Linux support for fork, vfork, and exec.
 
@@ -9361,7 +9479,7 @@ on an SVR4 system (including the one you are debugging).  At the moment,
 it prints the address mappings of the process.
 
 If you bring up GDB on another SVR4 system, please send mail to
-bug-gdb@prep.ai.mit.edu to let us know what changes were reqired (if any).
+bug-gdb@prep.ai.mit.edu to let us know what changes were required (if any).
 
  * Better dynamic linking support in SunOS
 
@@ -9376,7 +9494,7 @@ same code linked statically.
 GDB is now using the latest `getopt' routines from the FSF.  This
 version accepts the -- prefix for options with long names.  GDB will
 continue to accept the old forms (-option and +option) as well.
-Various single letter abbreviations for options have been explicity
+Various single letter abbreviations for options have been explicitly
 added to the option table so that they won't get overshadowed in the
 future by other options that begin with the same letter.
 
@@ -9409,7 +9527,7 @@ GDB can read ELF object files on System V Release 4, and can handle
 debugging records for C, in DWARF format, in ELF files.  This support
 is preliminary.  If you bring up GDB on another SVR4 system, please
 send mail to bug-gdb@prep.ai.mit.edu to let us know what changes were
-reqired (if any).
+required (if any).
 
  * New Readline
 

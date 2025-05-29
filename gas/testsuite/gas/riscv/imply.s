@@ -25,6 +25,9 @@ imply xsfvqmaccqoq
 imply xsfvqmaccdod
 imply xsfvfnrclipxfqf
 
+imply xtheadvector
+imply xtheadzvamo
+
 imply v
 imply zvfh
 imply zvfhmin
@@ -56,6 +59,8 @@ imply zcmt
 
 imply zicfilp
 imply zicfiss
+
+imply sha
 
 imply shcounterenw
 imply shgatpa
@@ -94,6 +99,7 @@ imply zvksc
 imply zvks
 
 imply smaia
+imply smcdeleg
 imply smcsrind
 imply smcntrpmf
 imply smstateen
@@ -101,6 +107,7 @@ imply smepmp
 imply smdbltrp
 
 imply ssaia
+imply ssccfg
 imply sscsrind
 imply sscofpmf
 imply sscounterenw

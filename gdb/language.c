@@ -1,6 +1,6 @@
 /* Multiple source language support for GDB.
 
-   Copyright (C) 1991-2024 Free Software Foundation, Inc.
+   Copyright (C) 1991-2025 Free Software Foundation, Inc.
 
    Contributed by the Department of Computer Science at the State University
    of New York at Buffalo.
@@ -675,14 +675,6 @@ bool
 language_defn::is_string_type_p (struct type *type) const
 {
   return c_is_string_type_p (type);
-}
-
-/* See language.h.  */
-
-std::unique_ptr<compile_instance>
-language_defn::get_compile_instance () const
-{
-  return {};
 }
 
 /* The default implementation of the get_symbol_name_matcher_inner method

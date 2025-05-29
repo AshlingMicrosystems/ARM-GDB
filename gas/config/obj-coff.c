@@ -368,8 +368,8 @@ static symbolS *line_fsym;
 void
 coff_obj_symbol_new_hook (symbolS *symbolP)
 {
-  long   sz = (OBJ_COFF_MAX_AUXENTRIES + 1) * sizeof (combined_entry_type);
-  char * s  = XNEWVEC (char, sz);
+  size_t sz = (OBJ_COFF_MAX_AUXENTRIES + 1) * sizeof (combined_entry_type);
+  char *s  = notes_alloc (sz);
 
   memset (s, 0, sz);
   coffsymbol (symbol_get_bfdsym (symbolP))->native = (combined_entry_type *) s;
@@ -389,11 +389,10 @@ coff_obj_symbol_new_hook (symbolS *symbolP)
 void
 coff_obj_symbol_clone_hook (symbolS *newsymP, symbolS *orgsymP)
 {
-  long elts = OBJ_COFF_MAX_AUXENTRIES + 1;
-  combined_entry_type * s = XNEWVEC (combined_entry_type, elts);
+  size_t sz = (OBJ_COFF_MAX_AUXENTRIES + 1) * sizeof (combined_entry_type);
+  combined_entry_type *s = notes_alloc (sz);
 
-  memcpy (s, coffsymbol (symbol_get_bfdsym (orgsymP))->native,
-	  elts * sizeof (combined_entry_type));
+  memcpy (s, coffsymbol (symbol_get_bfdsym (orgsymP))->native, sz);
   coffsymbol (symbol_get_bfdsym (newsymP))->native = s;
 
   SF_SET (newsymP, SF_GET (orgsymP));
@@ -570,13 +569,9 @@ obj_coff_ident (int ignore ATTRIBUTE_UNUSED)
 #define SKIP_WHITESPACES()	while (is_whitespace (*input_line_pointer)) \
                                   input_line_pointer++;
 
-static void
+void
 obj_coff_def (int what ATTRIBUTE_UNUSED)
 {
-  char name_end;		/* Char after the end of name.  */
-  char *symbol_name;		/* Name of the debug symbol.  */
-  char *symbol_name_copy;	/* Temporary copy of the name.  */
-
   if (def_symbol_in_progress != NULL)
     {
       as_warn (_(".def pseudo-op used inside of .def/.endef: ignored."));
@@ -586,14 +581,18 @@ obj_coff_def (int what ATTRIBUTE_UNUSED)
 
   SKIP_WHITESPACES ();
 
-  name_end = get_symbol_name (&symbol_name);
-  symbol_name_copy = xstrdup (symbol_name);
+  char *symbol_name;
+  char name_end = get_symbol_name (&symbol_name);
+  char *symbol_name_copy = NULL;
+  char *canon_name = symbol_name;
 #ifdef tc_canonicalize_symbol_name
-  symbol_name_copy = tc_canonicalize_symbol_name (symbol_name_copy);
+  symbol_name_copy = xstrdup (symbol_name);
+  canon_name = tc_canonicalize_symbol_name (symbol_name_copy);
 #endif
 
   /* Initialize the new symbol.  */
-  def_symbol_in_progress = symbol_make (symbol_name_copy);
+  def_symbol_in_progress = symbol_make (canon_name);
+  free (symbol_name_copy);
   symbol_set_frag (def_symbol_in_progress, &zero_address_frag);
   S_SET_VALUE (def_symbol_in_progress, 0);
 
@@ -1060,7 +1059,7 @@ weak_is_altname (const char * name)
 /* Return the name of the alternate symbol
    name corresponding to a weak symbol's name.  */
 
-static const char *
+static char *
 weak_name2altname (const char * name)
 {
   return concat (weak_altprefix, name, (char *) NULL);
@@ -1069,7 +1068,7 @@ weak_name2altname (const char * name)
 /* Return the name of the weak symbol corresponding to an
    alternate symbol.  */
 
-static const char *
+static char *
 weak_altname2name (const char * name)
 {
   gas_assert (weak_is_altname (name));
@@ -1090,7 +1089,7 @@ weak_uniquify (const char * name)
 #endif
   gas_assert (weak_is_altname (name));
 
-  return concat (name, ".", unique, (char *) NULL);
+  return notes_concat (name, ".", unique, (char *) NULL);
 }
 
 void
@@ -1107,7 +1106,9 @@ pecoff_obj_set_weak_hook (symbolS *symbolP)
   S_SET_NUMBER_AUXILIARY (symbolP, 1);
   SA_SET_SYM_FSIZE (symbolP, IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY);
 
-  alternateP = symbol_find_or_make (weak_name2altname (S_GET_NAME (symbolP)));
+  char *altname = weak_name2altname (S_GET_NAME (symbolP));
+  alternateP = symbol_find_or_make (altname);
+  free (altname);
   S_SET_EXTERNAL (alternateP);
   S_SET_STORAGE_CLASS (alternateP, C_NT_WEAK);
 
@@ -1122,7 +1123,9 @@ pecoff_obj_clear_weak_hook (symbolS *symbolP)
   S_SET_STORAGE_CLASS (symbolP, 0);
   SA_SET_SYM_FSIZE (symbolP, 0);
 
-  alternateP = symbol_find (weak_name2altname (S_GET_NAME (symbolP)));
+  char *altname = weak_name2altname (S_GET_NAME (symbolP));
+  alternateP = symbol_find (altname);
+  free (altname);
   S_CLEAR_EXTERNAL (alternateP);
 }
 
@@ -1184,7 +1187,6 @@ coff_assign_symbol (symbolS *symp ATTRIBUTE_UNUSED)
 #endif
 }
 
-symbolS *coff_last_function;
 #ifndef OBJ_XCOFF
 static symbolS *coff_last_bf;
 #endif
@@ -1192,6 +1194,7 @@ static symbolS *coff_last_bf;
 void
 coff_frob_symbol (symbolS *symp, int *punt)
 {
+  static symbolS *last_functionP;
   static symbolS *last_tagP;
   static stack *block_stack;
   static symbolS *set_end;
@@ -1216,9 +1219,9 @@ coff_frob_symbol (symbolS *symp, int *punt)
     {
       /* This is a weak alternate symbol.  All processing of
 	 PECOFFweak symbols is done here, through the alternate.  */
-      symbolS *weakp = symbol_find_noref (weak_altname2name
-					  (S_GET_NAME (symp)), 1);
-
+      char *weakname = weak_altname2name (S_GET_NAME (symp));
+      symbolS *weakp = symbol_find_noref (weakname, 1);
+      free (weakname);
       gas_assert (weakp);
       gas_assert (S_GET_NUMBER_AUXILIARY (weakp) == 1);
 
@@ -1335,30 +1338,26 @@ coff_frob_symbol (symbolS *symp, int *punt)
 		}
 	    }
 
-	  if (coff_last_function == 0 && SF_GET_FUNCTION (symp)
-	      && S_IS_DEFINED (symp))
+	  if (SF_GET_FUNCTION (symp) && S_IS_DEFINED (symp))
 	    {
 	      union internal_auxent *auxp;
 
-	      coff_last_function = symp;
 	      if (S_GET_NUMBER_AUXILIARY (symp) < 1)
 		S_SET_NUMBER_AUXILIARY (symp, 1);
 	      auxp = SYM_AUXENT (symp);
-	      memset (auxp->x_sym.x_fcnary.x_ary.x_dimen, 0,
-		      sizeof (auxp->x_sym.x_fcnary.x_ary.x_dimen));
+	      memset (&auxp->x_sym.x_fcnary.x_fcn, 0,
+		      sizeof (auxp->x_sym.x_fcnary.x_fcn));
 	    }
 
 	  if (S_GET_STORAGE_CLASS (symp) == C_EFCN
 	      && S_IS_DEFINED (symp))
 	    {
-	      if (coff_last_function == 0)
+	      if (!last_functionP)
 		as_fatal (_("C_EFCN symbol for %s out of scope"),
 			  S_GET_NAME (symp));
-	      SA_SET_SYM_FSIZE (coff_last_function,
+	      SA_SET_SYM_FSIZE (last_functionP,
 				(long) (S_GET_VALUE (symp)
-					- S_GET_VALUE (coff_last_function)));
-	      next_set_end = coff_last_function;
-	      coff_last_function = 0;
+					- S_GET_VALUE (last_functionP)));
 	    }
 	}
 
@@ -1410,6 +1409,13 @@ coff_frob_symbol (symbolS *symp, int *punt)
 	as_warn (_("Warning: internal error: forgetting to set endndx of %s"),
 		 S_GET_NAME (set_end));
       set_end = next_set_end;
+    }
+
+  if (SF_GET_FUNCTION (symp) && S_IS_DEFINED (symp) && !*punt)
+    {
+      if (last_functionP)
+	SA_SET_SYM_ENDNDX (last_functionP, symp);
+      last_functionP = symp;
     }
 
 #ifndef OBJ_XCOFF
@@ -1554,7 +1560,7 @@ obj_coff_section (int ignore ATTRIBUTE_UNUSED)
     }
 
   c = get_symbol_name (&section_name);
-  name = xmemdup0 (section_name, input_line_pointer - section_name);
+  name = notes_memdup0 (section_name, input_line_pointer - section_name);
   restore_line_pointer (c);
   SKIP_WHITESPACE ();
 
@@ -1569,13 +1575,13 @@ obj_coff_section (int ignore ATTRIBUTE_UNUSED)
 	exp = get_absolute_expression ();
       else
 	{
-	  unsigned char attr;
+	  char attr;
 	  int readonly_removed = 0;
 	  int load_removed = 0;
 
 	  while (attr = *++input_line_pointer,
 		 attr != '"'
-		 && ! is_end_of_line[attr])
+		 && ! is_end_of_stmt (attr))
 	    {
 	      if (ISDIGIT (attr))
 		{
@@ -1884,8 +1890,8 @@ static const pseudo_typeS coff_pseudo_table[] =
   {"loc", obj_coff_loc, 0},
   {"optim", s_ignore, 0},	/* For sun386i cc (?) */
   {"weak", obj_coff_weak, 0},
-#if defined TC_TIC4X
-  /* The tic4x uses sdef instead of def.  */
+#if defined (TC_TIC4X) || defined (TC_TIC54X)
+  /* The tic4x and tic54x use sdef instead of def.  */
   {"sdef", obj_coff_def, 0},
 #endif
 #if defined(SEH_CMDS)

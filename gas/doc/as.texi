@@ -552,7 +552,7 @@ gcc(1), ld(1), and the Info entries for @file{binutils} and @file{ld}.
 
 @emph{Target RISC-V options:}
    [@b{-fpic}|@b{-fPIC}|@b{-fno-pic}]
-   [@b{-march}=@var{ISA}]
+   [@b{-march}=@var{ISA}|@var{Profiles}|@var{Profiles_ISA}]
    [@b{-mabi}=@var{ABI}]
    [@b{-mlittle-endian}|@b{-mbig-endian}]
 @end ifset
@@ -1944,7 +1944,8 @@ Specify which s390 processor variant is the target, @samp{g5} (or
 @samp{arch6}), @samp{z9-109}, @samp{z9-ec} (or @samp{arch7}), @samp{z10} (or
 @samp{arch8}), @samp{z196} (or @samp{arch9}), @samp{zEC12} (or @samp{arch10}),
 @samp{z13} (or @samp{arch11}), @samp{z14} (or @samp{arch12}), @samp{z15}
-(or @samp{arch13}), @samp{z16} (or @samp{arch14}), or @samp{arch15}.
+(or @samp{arch13}), @samp{z16} (or @samp{arch14}), or @samp{z17} (or
+@samp{arch15}).
 @item -mregnames
 @itemx -mno-regnames
 Allow or disallow symbolic names for registers.
@@ -5176,7 +5177,30 @@ SPARC register window has been saved.
 @subsection @code{.cfi_escape} @var{expression}[, @dots{}]
 Allows the user to add arbitrary bytes to the unwind info.  One
 might use this to add OS-specific CFI opcodes, or generic CFI
-opcodes that GAS does not yet support.
+opcodes that GAS does not yet support.  To emit multi-byte data one may
+also use extended kind-of-expression forms:
+
+@itemize @bullet
+
+@item @code{data2(@var{expression})}
+to emit a 2-byte item,
+
+@item @code{data4(@var{expression})}
+to emit a 4-byte item (provided address size is at least 32 bits),
+
+@item @code{data8(@var{expression})}
+to emit an 8-byte item (provided address size is at least 64 bits),
+
+@item @code{addr(@var{expression})}
+to emit an address-sized item,
+
+@item @code{sleb128(@var{expression})}
+to emit a SLEB128 item,
+
+@item @code{uleb128(@var{expression})}
+to emit a ULEB128 item.
+
+@end itemize
 
 @subsection @code{.cfi_val_encoded_addr @var{register}, @var{encoding}, @var{label}}
 The current value of @var{register} is @var{label}.  The value of @var{label}

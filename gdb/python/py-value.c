@@ -1,6 +1,6 @@
 /* Python interface to values.
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -60,7 +60,6 @@ struct value_object {
   struct value_object *prev;
   struct value *value;
   PyObject *address;
-  PyObject *type;
   PyObject *dynamic_type;
   PyObject *content_bytes;
 };
@@ -84,8 +83,6 @@ valpy_clear_value (value_object *self)
   self->value = nullptr;
 
   Py_CLEAR (self->address);
-  Py_CLEAR (self->type);
-  Py_CLEAR (self->dynamic_type);
   Py_CLEAR (self->content_bytes);
 }
 
@@ -438,14 +435,7 @@ valpy_get_type (PyObject *self, void *closure)
 {
   value_object *obj = (value_object *) self;
 
-  if (!obj->type)
-    {
-      obj->type = type_to_type_object (obj->value->type ());
-      if (!obj->type)
-	return NULL;
-    }
-  Py_INCREF (obj->type);
-  return obj->type;
+  return type_to_type_object (obj->value->type ());
 }
 
 /* Return dynamic type of the value.  */
@@ -454,13 +444,7 @@ static PyObject *
 valpy_get_dynamic_type (PyObject *self, void *closure)
 {
   value_object *obj = (value_object *) self;
-  struct type *type = NULL;
-
-  if (obj->dynamic_type != NULL)
-    {
-      Py_INCREF (obj->dynamic_type);
-      return obj->dynamic_type;
-    }
+  struct type *type = nullptr;
 
   try
     {
@@ -493,23 +477,14 @@ valpy_get_dynamic_type (PyObject *self, void *closure)
       else if (type->code () == TYPE_CODE_STRUCT)
 	type = value_rtti_type (val, NULL, NULL, NULL);
       else
-	{
-	  /* Re-use object's static type.  */
-	  type = NULL;
-	}
+	type = val->type ();
     }
   catch (const gdb_exception &except)
     {
       return gdbpy_handle_gdb_exception (nullptr, except);
     }
 
-  if (type == NULL)
-    obj->dynamic_type = valpy_get_type (self, NULL);
-  else
-    obj->dynamic_type = type_to_type_object (type);
-
-  Py_XINCREF (obj->dynamic_type);
-  return obj->dynamic_type;
+  return type_to_type_object (type);
 }
 
 /* Implementation of gdb.Value.lazy_string ([encoding] [, length]) ->
@@ -1121,8 +1096,7 @@ valpy_getitem (PyObject *self, PyObject *key)
 	res_val = value_struct_elt (&tmp, {}, field.get (), NULL,
 				    "struct/class/union");
       else if (bitpos >= 0)
-	res_val = value_struct_elt_bitpos (&tmp, bitpos, field_type,
-					   "struct/class/union");
+	res_val = value_struct_elt_bitpos (tmp, bitpos, field_type);
       else if (base_class_type != NULL)
 	{
 	  struct type *val_type;
@@ -1937,15 +1911,14 @@ value_to_value_object (struct value *val)
   value_object *val_obj;
 
   val_obj = PyObject_New (value_object, &value_object_type);
-  if (val_obj != NULL)
+  if (val_obj != nullptr)
     {
       val->incref ();
       val_obj->value = val;
       val_obj->next = nullptr;
       val_obj->prev = nullptr;
-      val_obj->address = NULL;
-      val_obj->type = NULL;
-      val_obj->dynamic_type = NULL;
+      val_obj->address = nullptr;
+      val_obj->dynamic_type = nullptr;
       val_obj->content_bytes = nullptr;
       note_value (val_obj);
     }

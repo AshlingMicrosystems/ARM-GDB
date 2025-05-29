@@ -1,6 +1,6 @@
 /* Evaluate expressions for GDB.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -994,9 +994,10 @@ add_struct_fields (struct type *type, completion_list &output,
 		output.emplace_back (concat (prefix, type->field (i).name (),
 					     nullptr));
 	    }
-	  else if (type->field (i).type ()->code () == TYPE_CODE_UNION)
+	  else if (type->field (i).type ()->code () == TYPE_CODE_UNION
+		   || type->field (i).type ()->code () == TYPE_CODE_STRUCT)
 	    {
-	      /* Recurse into anonymous unions.  */
+	      /* Recurse into anonymous unions and structures.  */
 	      add_struct_fields (type->field (i).type (),
 				 output, fieldname, namelen, prefix);
 	    }
@@ -1069,20 +1070,6 @@ is_integral_or_integral_reference (struct type *type)
   return (type != nullptr
 	  && TYPE_IS_REFERENCE (type)
 	  && is_integral_type (type->target_type ()));
-}
-
-/* Helper function that implements the body of OP_SCOPE.  */
-
-struct value *
-eval_op_scope (struct type *expect_type, struct expression *exp,
-	       enum noside noside,
-	       struct type *type, const char *string)
-{
-  struct value *arg1 = value_aggregate_elt (type, string, expect_type,
-					    0, noside);
-  if (arg1 == NULL)
-    error (_("There is no field named %s"), string);
-  return arg1;
 }
 
 /* Helper function that implements the body of OP_VAR_ENTRY_VALUE.  */
@@ -2615,14 +2602,16 @@ operation::evaluate_for_address (struct expression *exp, enum noside noside)
 }
 
 value *
-scope_operation::evaluate_for_address (struct expression *exp,
-				       enum noside noside)
+scope_operation::evaluate_internal (struct type *expect_type,
+				    struct expression *exp,
+				    enum noside noside,
+				    bool want_address)
 {
-  value *x = value_aggregate_elt (std::get<0> (m_storage),
-				  std::get<1> (m_storage).c_str (),
-				  NULL, 1, noside);
-  if (x == NULL)
-    error (_("There is no field named %s"), std::get<1> (m_storage).c_str ());
+  const char *string = std::get<1> (m_storage).c_str ();
+  value *x = value_aggregate_elt (std::get<0> (m_storage), string,
+				  expect_type, want_address, noside);
+  if (x == nullptr)
+    error (_("There is no field named %s"), string);
   return x;
 }
 

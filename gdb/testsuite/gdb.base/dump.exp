@@ -1,4 +1,4 @@
-# Copyright 2002-2024 Free Software Foundation, Inc.
+# Copyright 2002-2025 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,12 +25,6 @@ set is64bitonly "no"
 set endian "auto"
 
 set formats {binary ihex srec tekhex  verilog}
-
-if {[istarget "alpha*-*-*"]} {
-    # SREC etc cannot handle 64-bit addresses.  Force the test
-    # program into the low 31 bits of the address space.
-    lappend options "ldflags=-Wl,-taso"
-}
 
 # Runs the command 'print zero_all ()'.  Uses the PRINT_ZERO_ALL_COUNT
 # global to ensure the test names are unique.

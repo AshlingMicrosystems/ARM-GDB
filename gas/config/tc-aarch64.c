@@ -2528,7 +2528,7 @@ reg_name_p (char *str, aarch64_reg_type reg_type)
     return false;
 
   skip_whitespace (str);
-  if (*str == ',' || is_end_of_line[(unsigned char) *str])
+  if (*str == ',' || is_end_of_stmt (*str))
     return true;
 
   return false;
@@ -7806,8 +7806,12 @@ parse_operands (char *str, const aarch64_opcode *opcode)
 	  info->addr.offset.imm = inst.reloc.exp.X_add_number;
 	  break;
 
-	case AARCH64_OPND_SVE_ADDR_R:
-	  /* [<Xn|SP>{, <R><m>}]
+	case AARCH64_OPND_SVE_ADDR_RR:
+	case AARCH64_OPND_SVE_ADDR_RR_LSL1:
+	case AARCH64_OPND_SVE_ADDR_RR_LSL2:
+	case AARCH64_OPND_SVE_ADDR_RR_LSL3:
+	case AARCH64_OPND_SVE_ADDR_RR_LSL4:
+	  /* [<Xn|SP>{, <R><m>{, lsl #<amount>}}]
 	     but recognizing SVE registers.  */
 	  po_misc_or_fail (parse_sve_address (&str, info, &base_qualifier,
 					      &offset_qualifier));
@@ -7816,8 +7820,21 @@ parse_operands (char *str, const aarch64_opcode *opcode)
 	      offset_qualifier = AARCH64_OPND_QLF_X;
 	      info->addr.offset.is_reg = 1;
 	      info->addr.offset.regno = 31;
+
+	      /* We set the shifter amount here, but let regoff_addr assign the
+		 shifter kind.  */
+	      if (operands[i] == AARCH64_OPND_SVE_ADDR_RR)
+		  info->shifter.amount = 0;
+	      else if (operands[i] == AARCH64_OPND_SVE_ADDR_RR_LSL1)
+		  info->shifter.amount = 1;
+	      else if (operands[i] == AARCH64_OPND_SVE_ADDR_RR_LSL2)
+		  info->shifter.amount = 2;
+	      else if (operands[i] == AARCH64_OPND_SVE_ADDR_RR_LSL3)
+		  info->shifter.amount = 3;
+	      else
+		  info->shifter.amount = 4;
 	    }
-	  else if (base_qualifier != AARCH64_OPND_QLF_X
+	  if (base_qualifier != AARCH64_OPND_QLF_X
 	      || offset_qualifier != AARCH64_OPND_QLF_X)
 	    {
 	      set_syntax_error (_("invalid addressing mode"));
@@ -7825,11 +7842,11 @@ parse_operands (char *str, const aarch64_opcode *opcode)
 	    }
 	  goto regoff_addr;
 
-	case AARCH64_OPND_SVE_ADDR_RR:
-	case AARCH64_OPND_SVE_ADDR_RR_LSL1:
-	case AARCH64_OPND_SVE_ADDR_RR_LSL2:
-	case AARCH64_OPND_SVE_ADDR_RR_LSL3:
-	case AARCH64_OPND_SVE_ADDR_RR_LSL4:
+	case AARCH64_OPND_SVE_ADDR_RM:
+	case AARCH64_OPND_SVE_ADDR_RM_LSL1:
+	case AARCH64_OPND_SVE_ADDR_RM_LSL2:
+	case AARCH64_OPND_SVE_ADDR_RM_LSL3:
+	case AARCH64_OPND_SVE_ADDR_RM_LSL4:
 	case AARCH64_OPND_SVE_ADDR_RX:
 	case AARCH64_OPND_SVE_ADDR_RX_LSL1:
 	case AARCH64_OPND_SVE_ADDR_RX_LSL2:
@@ -8465,6 +8482,7 @@ warn_unpredictable_ldst (aarch64_instruction *instr, char *str)
     case ldst_imm10:
     case ldst_unscaled:
     case ldst_unpriv:
+    ldst_single:
       /* Loading/storing the base register is unpredictable if writeback.  */
       if ((aarch64_get_operand_class (opnds[0].type)
 	   == AARCH64_OPND_CLASS_INT_REG)
@@ -8477,43 +8495,9 @@ warn_unpredictable_ldst (aarch64_instruction *instr, char *str)
       break;
 
     case rcpc3:
-      {
-	const int nb_operands = aarch64_num_of_operands (opcode);
-	if (aarch64_get_operand_class (opnds[0].type)
-	    == AARCH64_OPND_CLASS_INT_REG)
-	  {
-	    /* Load Pair transfer with register overlap. */
-	    if (nb_operands == 3 && opnds[0].reg.regno == opnds[1].reg.regno)
-	      { // ldiapp, stilp
-		as_warn (_("unpredictable load pair transfer with register "
-			   "overlap -- `%s'"),
-			 str);
-	      }
-	    /* Loading/storing the base register is unpredictable if writeback. */
-	    else if ((nb_operands == 2
-		      && opnds[0].reg.regno == opnds[1].addr.base_regno
-		      && opnds[1].addr.base_regno != REG_SP
-		      && opnds[1].addr.writeback)
-		     || (nb_operands == 3
-			 && (opnds[0].reg.regno == opnds[2].addr.base_regno
-			     || opnds[1].reg.regno == opnds[2].addr.base_regno)
-			 && opnds[2].addr.base_regno != REG_SP
-			 && opnds[2].addr.writeback))
-	      {
-		if (strcmp (opcode->name, "ldapr") == 0
-		    || strcmp (opcode->name, "ldiapp") == 0)
-		  as_warn (
-		    _("unpredictable transfer with writeback (load) -- `%s'"),
-		    str);
-		else // stlr, stilp
-		  as_warn (
-		    _("unpredictable transfer with writeback (store) -- `%s'"),
-		    str);
-	      }
-	  }
-      }
-      break;
-
+      if (aarch64_num_of_operands (opcode) == 2)
+	goto ldst_single;
+      /* Fall through.  */
     case ldstpair_off:
     case ldstnapair_offs:
     case ldstpair_indexed:
@@ -9074,12 +9058,15 @@ aarch64_handle_align (fragS * fragP)
 #endif
       memset (p, 0, fix);
       p += fix;
+      bytes -= fix;
       fragP->fr_fix += fix;
     }
 
-  if (noop_size)
-    memcpy (p, aarch64_noop, noop_size);
-  fragP->fr_var = noop_size;
+  if (bytes != 0)
+    {
+      fragP->fr_var = noop_size;
+      memcpy (p, aarch64_noop, noop_size);
+    }
 }
 
 /* Perform target specific initialisation of a frag.
@@ -9154,7 +9141,7 @@ aarch64_sframe_cfa_ra_offset (void)
   return (offsetT) SFRAME_CFA_FIXED_RA_INVALID;
 }
 
-/* Get the abi/arch indentifier for SFrame.  */
+/* Get the abi/arch identifier for SFrame.  */
 
 unsigned char
 aarch64_sframe_get_abi_arch (void)
@@ -11020,7 +11007,7 @@ aarch64_parse_arch (const char *str)
 	return aarch64_parse_features (ext, &march_cpu_opt, false);
       }
 
-  as_bad (_("unknown architecture `%s'\n"), str);
+  as_bad (_("unknown architecture `%s'"), str);
   return 0;
 }
 
@@ -11058,7 +11045,7 @@ aarch64_parse_abi (const char *str)
 	return 1;
       }
 
-  as_bad (_("unknown abi `%s'\n"), str);
+  as_bad (_("unknown abi `%s'"), str);
   return 0;
 }
 
@@ -11257,7 +11244,7 @@ s_aarch64_arch (int ignored ATTRIBUTE_UNUSED)
 	return;
       }
 
-  as_bad (_("unknown architecture `%s'\n"), name);
+  as_bad (_("unknown architecture `%s'"), name);
   *input_line_pointer = saved_char;
   ignore_rest_of_line ();
 }

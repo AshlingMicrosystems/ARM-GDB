@@ -1378,7 +1378,25 @@ hash_entry_bfd (struct bfd_link_hash_entry *h)
   /*NOTREACHED*/
 }
 
-/* Add a symbol to the global hash table.
+/*
+FUNCTION
+	_bfd_generic_link_add_one_symbol
+
+SYNOPSIS
+	bool _bfd_generic_link_add_one_symbol
+	  (struct bfd_link_info *info,
+	   bfd *abfd,
+	   const char *name,
+	   flagword flags,
+	   asection *section,
+	   bfd_vma value,
+	   const char *string,
+	   bool copy,
+	   bool collect,
+	   struct bfd_link_hash_entry **hashp);
+
+DESCRIPTION
+   Add a symbol to the global hash table.
    ABFD is the BFD the symbol comes from.
    NAME is the name of the symbol.
    FLAGS is the BSF_* bits associated with the symbol.
@@ -1854,7 +1872,47 @@ _bfd_generic_link_add_one_symbol (struct bfd_link_info *info,
 
   return true;
 }
-
+
+/*
+FUNCTION
+	bfd_link_align_section
+
+SYNOPSIS
+	bool bfd_link_align_section (asection *, unsigned int);
+
+DESCRIPTION
+	Increase section alignment if the current section alignment is
+	less than the requested value.  Adjust output section
+	alignment too, so that linker layout adjusts for alignment on
+	the current lang_size_sections pass.  This is important for
+	lang_size_relro_segment.  If the output section alignment
+	isn't adjusted, the linker will place the output section at an
+	address depending on its current alignment.  When sizing the
+	output section, input sections attached transfer any increase
+	in alignment to the output section, which will affect layout
+	for the next sizing pass.  Which is all well and good except
+	that lang_size_relro_segment for the current sizing pass uses
+	that possibly increased alignment with a layout that doesn't
+	suit.
+*/
+
+bool
+bfd_link_align_section (asection *sec, unsigned int align_p2)
+{
+  if (align_p2 > bfd_section_alignment (sec))
+    {
+      if (!bfd_set_section_alignment (sec, align_p2))
+	return false;
+      asection *osec = sec->output_section;
+      if (osec && align_p2 > bfd_section_alignment (osec))
+	{
+	  if (!bfd_set_section_alignment (osec, align_p2))
+	    return false;
+	}
+    }
+  return true;
+}
+
 /* Generic final link routine.  */
 
 bool
@@ -2985,6 +3043,8 @@ _bfd_generic_section_already_linked (bfd *abfd ATTRIBUTE_UNUSED,
   name = bfd_section_name (sec);
 
   already_linked_list = bfd_section_already_linked_table_lookup (name);
+  if (!already_linked_list)
+    goto bad;
 
   l = already_linked_list->entry;
   if (l != NULL)
@@ -2996,7 +3056,10 @@ _bfd_generic_section_already_linked (bfd *abfd ATTRIBUTE_UNUSED,
 
   /* This is the first section with this name.  Record it.  */
   if (!bfd_section_already_linked_table_insert (already_linked_list, sec))
-    info->callbacks->einfo (_("%F%P: already_linked_table: %E\n"));
+    {
+    bad:
+      info->callbacks->fatal (_("%P: already_linked_table: %E\n"));
+    }
   return false;
 }
 

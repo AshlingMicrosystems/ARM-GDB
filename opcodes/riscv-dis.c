@@ -37,6 +37,9 @@
    disassemble_info::fprintf_func which is for unstyled output.  */
 #define fprintf_func please_use_fprintf_styled_func_instead
 
+/* The earliest privilege spec supported by disassembler. */
+#define PRIV_SPEC_EARLIEST PRIV_SPEC_CLASS_1P10
+
 struct riscv_private_data
 {
   bfd_vma gp;
@@ -52,6 +55,9 @@ struct riscv_private_data
   enum riscv_spec_class default_priv_spec;
   /* Used for architecture parser.  */
   riscv_parse_subset_t riscv_rps_dis;
+  /* Default architecture string for the object file.  It will be changed once
+     elf architecture attribute exits.  This is used for mapping symbol $x.  */
+  const char* default_arch;
   /* Used for mapping symbols.  */
   int last_map_symbol;
   bfd_vma last_stop_offset;
@@ -63,7 +69,7 @@ struct riscv_private_data
   const char (*riscv_fpr_names)[NRC];
   /* If set, disassemble as most general instruction.  */
   bool no_aliases;
-  /* If set, disassemble without checking architectire string, just like what
+  /* If set, disassemble without checking architecture string, just like what
      we did at the beginning.  */
   bool all_ext;
 };
@@ -77,6 +83,7 @@ set_default_riscv_dis_options (struct disassemble_info *info)
   pd->riscv_gpr_names = riscv_gpr_names_abi;
   pd->riscv_fpr_names = riscv_fpr_names_abi;
   pd->no_aliases = false;
+  pd->all_ext = false;
 }
 
 /* Parse RISC-V disassembler option (without arguments).  */
@@ -136,7 +143,7 @@ parse_riscv_dis_option (const char *option, struct disassemble_info *info)
       const char *name = NULL;
 
       RISCV_GET_PRIV_SPEC_CLASS (value, priv_spec);
-      if (priv_spec == PRIV_SPEC_CLASS_NONE)
+      if (priv_spec < PRIV_SPEC_EARLIEST)
 	opcodes_error_handler (_("unknown privileged spec set by %s=%s"),
 			       option, value);
       else if (pd->default_priv_spec == PRIV_SPEC_CLASS_NONE)
@@ -504,6 +511,11 @@ print_insn_args (const char *oparg, insn_t l, bfd_vma pc, disassemble_info *info
 	  /* Only print constant 0 if it is the last argument.  */
 	  if (!oparg[1])
 	    print (info->stream, dis_style_immediate, "0");
+	  break;
+
+	case 'r':
+	  print (info->stream, dis_style_register, "%s",
+		 pd->riscv_gpr_names[EXTRACT_OPERAND (RS3, l)]);
 	  break;
 
 	case 's':
@@ -874,6 +886,37 @@ print_insn_args (const char *oparg, insn_t l, bfd_vma pc, disassemble_info *info
 		  break;
 		}
 	      break;
+	    case 'm': /* Vendor-specific (MIPS) operands.  */
+	      switch (*++oparg)
+		{
+		case '@':
+		  print (info->stream, dis_style_register, "0x%x",
+			 (unsigned) EXTRACT_OPERAND (MIPS_HINT, l));
+		  break;
+		case '#':
+		  print (info->stream, dis_style_register, "0x%x",
+			 (unsigned) EXTRACT_OPERAND (MIPS_IMM9, l));
+		  break;
+		case '$':
+		  print (info->stream, dis_style_immediate, "%d",
+			 (unsigned)EXTRACT_MIPS_LDP_IMM (l));
+		  break;
+		case '%':
+		  print (info->stream, dis_style_immediate, "%d",
+			 (unsigned)EXTRACT_MIPS_LWP_IMM (l));
+		  break;
+		case '^':
+		  print (info->stream, dis_style_immediate, "%d",
+			 (unsigned)EXTRACT_MIPS_SDP_IMM (l));
+		  break;
+		case '&':
+		  print (info->stream, dis_style_immediate, "%d",
+			 (unsigned)EXTRACT_MIPS_SWP_IMM (l));
+		  break;
+		default:
+		  goto undefined_modifier;
+		}
+	      break;
 	    default:
 	      goto undefined_modifier;
 	    }
@@ -1048,6 +1091,23 @@ riscv_disassemble_insn (bfd_vma memaddr,
   return insnlen;
 }
 
+/* Decide if we need to parse the architecture string again, also record the
+   string into the current subset list.  */
+
+static void
+riscv_dis_parse_subset (struct disassemble_info *info, const char *arch_new)
+{
+  struct riscv_private_data *pd = info->private_data;
+  const char *arch_subset_list = pd->riscv_rps_dis.subset_list->arch_str;
+  if (arch_subset_list == NULL || strcmp (arch_subset_list, arch_new) != 0)
+    {
+      riscv_release_subset_list (pd->riscv_rps_dis.subset_list);
+      riscv_parse_subset (&pd->riscv_rps_dis, arch_new);
+      riscv_arch_str (pd->xlen, pd->riscv_rps_dis.subset_list,
+		      true/* update */);
+    }
+}
+
 /* If we find the suitable mapping symbol update the STATE.
    Otherwise, do nothing.  */
 
@@ -1065,14 +1125,16 @@ riscv_update_map_state (int n,
     return;
 
   name = bfd_asymbol_name(info->symtab[n]);
-  if (strcmp (name, "$x") == 0)
-    *state = MAP_INSN;
-  else if (strcmp (name, "$d") == 0)
+  if (strcmp (name, "$d") == 0)
     *state = MAP_DATA;
+  else if (strcmp (name, "$x") == 0)
+    {
+      *state = MAP_INSN;
+      riscv_dis_parse_subset (info, pd->default_arch);
+    }
   else if (strncmp (name, "$xrv", 4) == 0)
     {
       *state = MAP_INSN;
-      riscv_release_subset_list (pd->riscv_rps_dis.subset_list);
 
       /* ISA mapping string may be numbered, suffixed with '.n'. Do not
 	 consider this as part of the ISA string.  */
@@ -1083,11 +1145,11 @@ riscv_update_map_state (int n,
 	  char *name_substr = xmalloc (suffix_index + 1);
 	  strncpy (name_substr, name, suffix_index);
 	  name_substr[suffix_index] = '\0';
-	  riscv_parse_subset (&pd->riscv_rps_dis, name_substr + 2);
+	  riscv_dis_parse_subset (info, name_substr + 2);
 	  free (name_substr);
 	}
       else
-	riscv_parse_subset (&pd->riscv_rps_dis, name + 2);
+	riscv_dis_parse_subset (info, name + 2);
     }
 }
 
@@ -1289,6 +1351,7 @@ riscv_disassemble_data (bfd_vma memaddr ATTRIBUTE_UNUSED,
 			disassemble_info *info)
 {
   info->display_endian = info->endian;
+  int i;
 
   switch (info->bytes_per_chunk)
     {
@@ -1307,14 +1370,6 @@ riscv_disassemble_data (bfd_vma memaddr ATTRIBUTE_UNUSED,
       (*info->fprintf_styled_func) (info->stream, dis_style_text, "\t");
       (*info->fprintf_styled_func)
 	(info->stream, dis_style_immediate, "0x%04x", (unsigned) data);
-      break;
-    case 3:
-      info->bytes_per_line = 7;
-      (*info->fprintf_styled_func)
-	(info->stream, dis_style_assembler_directive, ".word");
-      (*info->fprintf_styled_func) (info->stream, dis_style_text, "\t");
-      (*info->fprintf_styled_func)
-	(info->stream, dis_style_immediate, "0x%06x", (unsigned) data);
       break;
     case 4:
       info->bytes_per_line = 8;
@@ -1335,7 +1390,22 @@ riscv_disassemble_data (bfd_vma memaddr ATTRIBUTE_UNUSED,
 	 (unsigned long long) data);
       break;
     default:
-      abort ();
+      /* Arbitrary data so just print the bits in the shape of an .<N>byte
+	 directive.  */
+      info->bytes_per_line = info->bytes_per_chunk;
+      (*info->fprintf_styled_func)
+	(info->stream, dis_style_assembler_directive, ".%dbyte", info->bytes_per_chunk);
+      (*info->fprintf_styled_func) (info->stream, dis_style_text, "\t");
+      (*info->fprintf_styled_func) (info->stream, dis_style_immediate, "0x");
+      for (i = info->bytes_per_line; i > 0;)
+	{
+	  i--;
+	  data = bfd_get_bits (packet + i, 8, false);
+	  (*info->fprintf_styled_func)
+	    (info->stream, dis_style_immediate, "%02x",
+	      (unsigned) data);
+	}
+      break;
     }
   return info->bytes_per_chunk;
 }
@@ -1372,7 +1442,7 @@ riscv_init_disasm_info (struct disassemble_info *info)
   pd->riscv_rps_dis.xlen = &pd->xlen;
   pd->riscv_rps_dis.isa_spec = &pd->default_isa_spec;
   pd->riscv_rps_dis.check_unknown_prefixed_ext = false;
-  const char *default_arch = "rv64gc";
+  pd->default_arch = "rv64gc";
   if (info->section != NULL)
     {
       bfd *abfd = info->section->owner;
@@ -1390,12 +1460,10 @@ riscv_init_disasm_info (struct disassemble_info *info)
 						      attr[Tag_b].i,
 						      attr[Tag_c].i,
 						      &pd->default_priv_spec);
-	      default_arch = attr[Tag_RISCV_arch].s;
+	      pd->default_arch = attr[Tag_RISCV_arch].s;
 	    }
 	}
     }
-  riscv_release_subset_list (pd->riscv_rps_dis.subset_list);
-  riscv_parse_subset (&pd->riscv_rps_dis, default_arch);
 
   pd->last_map_symbol = -1;
   pd->last_stop_offset = 0;
@@ -1408,6 +1476,7 @@ riscv_init_disasm_info (struct disassemble_info *info)
   pd->all_ext = false;
 
   info->private_data = pd;
+  riscv_dis_parse_subset (info, pd->default_arch);
   return true;
 }
 
@@ -1548,6 +1617,9 @@ static struct
   riscv_option_arg_t arg;
 } riscv_options[] =
 {
+  { "max",
+    N_("Disassemble without checking architecture string."),
+    RISCV_OPTION_ARG_NONE },
   { "numeric",
     N_("Print numeric register names, rather than ABI names."),
     RISCV_OPTION_ARG_NONE },
@@ -1579,12 +1651,12 @@ disassembler_options_riscv (void)
       args = XNEWVEC (disasm_option_arg_t, num_args + 1);
 
       args[RISCV_OPTION_ARG_PRIV_SPEC].name = "SPEC";
-      priv_spec_count = PRIV_SPEC_CLASS_DRAFT - PRIV_SPEC_CLASS_NONE - 1;
+      priv_spec_count = PRIV_SPEC_CLASS_DRAFT - PRIV_SPEC_EARLIEST;
       args[RISCV_OPTION_ARG_PRIV_SPEC].values
         = XNEWVEC (const char *, priv_spec_count + 1);
       for (i = 0; i < priv_spec_count; i++)
 	args[RISCV_OPTION_ARG_PRIV_SPEC].values[i]
-          = riscv_priv_specs[i].name;
+	  = riscv_priv_specs[PRIV_SPEC_EARLIEST - PRIV_SPEC_CLASS_NONE - 1 + i].name;
       /* The array we return must be NULL terminated.  */
       args[RISCV_OPTION_ARG_PRIV_SPEC].values[i] = NULL;
 
@@ -1683,5 +1755,8 @@ void disassemble_free_riscv (struct disassemble_info *info ATTRIBUTE_UNUSED)
 {
   struct riscv_private_data *pd = info->private_data;
   if (pd)
-    riscv_release_subset_list (pd->riscv_rps_dis.subset_list);
+    {
+      riscv_release_subset_list (pd->riscv_rps_dis.subset_list);
+      free (pd->riscv_rps_dis.subset_list);
+    }
 }

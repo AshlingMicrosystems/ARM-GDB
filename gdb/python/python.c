@@ -1,6 +1,6 @@
 /* General python/gdb code
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -36,6 +36,7 @@
 #include "run-on-main-thread.h"
 #include "observable.h"
 #include "build-id.h"
+#include "cli/cli-style.h"
 
 #if GDB_SELF_TEST
 #include "gdbsupport/selftest.h"
@@ -127,7 +128,8 @@ static bool gdbpy_check_quit_flag (const struct extension_language_defn *);
 static enum ext_lang_rc gdbpy_before_prompt_hook
   (const struct extension_language_defn *, const char *current_gdb_prompt);
 static std::optional<std::string> gdbpy_colorize
-  (const std::string &filename, const std::string &contents);
+  (const std::string &filename, const std::string &contents,
+   enum language lang);
 static std::optional<std::string> gdbpy_colorize_disasm
 (const std::string &content, gdbarch *gdbarch);
 static ext_lang_missing_file_result gdbpy_handle_missing_debuginfo
@@ -660,12 +662,14 @@ execute_gdb_command (PyObject *self, PyObject *args, PyObject *kw)
   const char *arg;
   PyObject *from_tty_obj = nullptr;
   PyObject *to_string_obj = nullptr;
-  static const char *keywords[] = { "command", "from_tty", "to_string",
-				    nullptr };
+  PyObject *styling = nullptr;
+  static const char *keywords[]
+    = { "command", "from_tty", "to_string", "styling", nullptr };
 
-  if (!gdb_PyArg_ParseTupleAndKeywords (args, kw, "s|O!O!", keywords, &arg,
+  if (!gdb_PyArg_ParseTupleAndKeywords (args, kw, "s|O!O!O!", keywords, &arg,
 					&PyBool_Type, &from_tty_obj,
-					&PyBool_Type, &to_string_obj))
+					&PyBool_Type, &to_string_obj,
+					&PyBool_Type, &styling))
     return nullptr;
 
   bool from_tty = false;
@@ -684,6 +688,15 @@ execute_gdb_command (PyObject *self, PyObject *args, PyObject *kw)
       if (cmp < 0)
 	return nullptr;
       to_string = (cmp != 0);
+    }
+
+  bool styling_p = !to_string;
+  if (styling != nullptr)
+    {
+      int cmp = PyObject_IsTrue (styling);
+      if (cmp < 0)
+	return nullptr;
+      styling_p = (cmp != 0);
     }
 
   std::string to_string_res;
@@ -745,14 +758,29 @@ execute_gdb_command (PyObject *self, PyObject *args, PyObject *kw)
 
 	scoped_restore save_uiout = make_scoped_restore (&current_uiout);
 
+	/* If the Python 'styling' argument was False then temporarily
+	   disable styling.  Otherwise, don't do anything, styling could
+	   already be disabled for some other reason, we shouldn't override
+	   that and force styling on.  */
+	std::optional<scoped_disable_styling> disable_styling;
+	if (!styling_p)
+	  disable_styling.emplace ();
+
 	/* Use the console interpreter uiout to have the same print format
 	   for console or MI.  */
 	interp = interp_lookup (current_ui, "console");
 	current_uiout = interp->interp_ui_out ();
 
 	if (to_string)
-	  to_string_res = execute_control_commands_to_string (lines.get (),
-							      from_tty);
+	  {
+	    /* Pass 'true' here to always request styling, however, if
+	       the scoped_disable_styling disabled styling, or the user
+	       has globally disabled styling, then the output will not be
+	       styled.  */
+	    to_string_res
+	      = execute_control_commands_to_string (lines.get (), from_tty,
+						    true);
+	  }
 	else
 	  execute_control_commands (lines.get (), from_tty);
       }
@@ -772,7 +800,8 @@ execute_gdb_command (PyObject *self, PyObject *args, PyObject *kw)
     }
 
   if (to_string)
-    return PyUnicode_FromString (to_string_res.c_str ());
+    return PyUnicode_Decode (to_string_res.c_str (), to_string_res.size (),
+			     host_charset (), nullptr);
   Py_RETURN_NONE;
 }
 
@@ -1267,7 +1296,8 @@ gdbpy_before_prompt_hook (const struct extension_language_defn *extlang,
 /* This is the extension_language_ops.colorize "method".  */
 
 static std::optional<std::string>
-gdbpy_colorize (const std::string &filename, const std::string &contents)
+gdbpy_colorize (const std::string &filename, const std::string &contents,
+		enum language lang)
 {
   if (!gdb_python_initialized)
     return {};
@@ -1301,6 +1331,13 @@ gdbpy_colorize (const std::string &filename, const std::string &contents)
       return {};
     }
 
+  gdbpy_ref<> lang_arg (PyUnicode_FromString (language_str (lang)));
+  if (lang_arg == nullptr)
+    {
+      gdbpy_print_stack ();
+      return {};
+    }
+
   /* The pygments library, which is what we currently use for applying
      styling, is happy to take input as a bytes object, and to figure out
      the encoding for itself.  This removes the need for us to figure out
@@ -1321,6 +1358,7 @@ gdbpy_colorize (const std::string &filename, const std::string &contents)
   gdbpy_ref<> result (PyObject_CallFunctionObjArgs (hook.get (),
 						    fname_arg.get (),
 						    contents_arg.get (),
+						    lang_arg.get (),
 						    nullptr));
   if (result == nullptr)
     {
@@ -1574,16 +1612,19 @@ gdbpy_flush (PyObject *self, PyObject *args, PyObject *kw)
     {
     case 1:
       {
-	gdb_flush (gdb_stderr);
+	if (gdb_stderr != nullptr)
+	  gdb_flush (gdb_stderr);
 	break;
       }
     case 2:
       {
-	gdb_flush (gdb_stdlog);
+	if (gdb_stdlog != nullptr)
+	  gdb_flush (gdb_stdlog);
 	break;
       }
     default:
-      gdb_flush (gdb_stdout);
+      if (gdb_stdout != nullptr)
+	gdb_flush (gdb_stdout);
     }
 
   Py_RETURN_NONE;
@@ -2405,7 +2446,7 @@ py_initialize ()
      /foo/lib/pythonX.Y/...
      This must be done before calling Py_Initialize.  */
   gdb::unique_xmalloc_ptr<char> progname
-    (concat (ldirname (python_libdir.c_str ()).c_str (), SLASH_STRING, "bin",
+    (concat (gdb_ldirname (python_libdir.c_str ()).c_str (), SLASH_STRING, "bin",
 	      SLASH_STRING, "python", (char *) NULL));
 
   {
@@ -2634,7 +2675,7 @@ test_python ()
 
 #undef CHECK_OUTPUT
 
-} // namespace selftests
+} /* namespace selftests */
 #endif /* GDB_SELF_TEST */
 
 #endif /* HAVE_PYTHON */

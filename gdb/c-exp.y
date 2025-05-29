@@ -1,5 +1,5 @@
 /* YACC parser for C expressions, for GDB.
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -3041,10 +3041,6 @@ classify_name (struct parser_state *par_state, const struct block *block,
   struct field_of_this_result is_a_field_of_this;
 
   std::string copy = copy_name (yylval.sval);
-
-  /* Initialize this in case we *don't* use it in this call; that way
-     we can refer to it unconditionally below.  */
-  memset (&is_a_field_of_this, 0, sizeof (is_a_field_of_this));
 
   bsym = lookup_symbol (copy.c_str (), block, SEARCH_VFT,
 			par_state->language ()->name_of_this ()

@@ -1,6 +1,6 @@
 /* Common target dependent code for GDB on ARM systems.
 
-   Copyright (C) 1988-2024 Free Software Foundation, Inc.
+   Copyright (C) 1988-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -1669,7 +1669,7 @@ arm_analyze_load_stack_chk_guard(CORE_ADDR pc, struct gdbarch *gdbarch,
 
 	ldr	Rn, .Label
 	....
-	.Lable:
+	.Label:
 	.word	__stack_chk_guard
 
    Since ldr/str is a very popular instruction, we can't use them as
@@ -9202,7 +9202,7 @@ arm_store_return_value (struct type *type, struct regcache *regs,
 	{
 	  /* Integral values greater than one word are stored in consecutive
 	     registers starting with r0.  This will always be a multiple of
-	     the regiser size.  */
+	     the register size.  */
 	  int len = type->length ();
 	  int regno = ARM_A1_REGNUM;
 
@@ -9719,9 +9719,9 @@ coff_sym_is_thumb (int val)
    symbol to indicate that it does.  */
    
 static void
-arm_elf_make_msymbol_special(asymbol *sym, struct minimal_symbol *msym)
+arm_elf_make_msymbol_special (const asymbol *sym, struct minimal_symbol *msym)
 {
-  elf_symbol_type *elfsym = (elf_symbol_type *) sym;
+  const elf_symbol_type *elfsym = (const elf_symbol_type *) sym;
 
   if (ARM_GET_SYM_BRANCH_TYPE (elfsym->internal_elf_sym.st_target_internal)
       == ST_BRANCH_TO_THUMB)
@@ -9737,7 +9737,7 @@ arm_coff_make_msymbol_special(int val, struct minimal_symbol *msym)
 
 static void
 arm_record_special_symbol (struct gdbarch *gdbarch, struct objfile *objfile,
-			   asymbol *sym)
+			   const asymbol *sym)
 {
   const char *name = bfd_asymbol_name (sym);
   struct arm_per_bfd *data;
@@ -10103,7 +10103,7 @@ arm_get_pc_address_flags (const frame_info_ptr &frame, CORE_ADDR pc)
 }
 
 /* Initialize the current architecture based on INFO.  If possible,
-   re-use an architecture from ARCHES, which is a list of
+   reuse an architecture from ARCHES, which is a list of
    architectures already created during this debugging session.
 
    Called e.g. at program startup, when reading a core file, and when
@@ -14846,7 +14846,7 @@ arm_analyze_prologue_test ()
     }
 }
 
-} // namespace selftests
+} /* namespace selftests */
 #endif /* GDB_SELF_TEST */
 
 /* Cleans up local record registers and memory allocations.  */

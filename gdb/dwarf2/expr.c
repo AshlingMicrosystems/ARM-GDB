@@ -1,6 +1,6 @@
 /* DWARF 2 Expression Evaluator.
 
-   Copyright (C) 2001-2024 Free Software Foundation, Inc.
+   Copyright (C) 2001-2025 Free Software Foundation, Inc.
 
    Contributed by Daniel Berlin (dan@dberlin.org)
 
@@ -60,7 +60,7 @@ ensure_have_frame (const frame_info_ptr &frame, const char *op_name)
 /* Ensure that a PER_CU is defined and throw an exception otherwise.  */
 
 static void
-ensure_have_per_cu (dwarf2_per_cu_data *per_cu, const char* op_name)
+ensure_have_per_cu (dwarf2_per_cu *per_cu, const char *op_name)
 {
   if (per_cu == nullptr)
     throw_error (GENERIC_ERROR,
@@ -96,7 +96,7 @@ struct piece_closure
   dwarf2_per_objfile *per_objfile = nullptr;
 
   /* The CU from which this closure's expression came.  */
-  dwarf2_per_cu_data *per_cu = nullptr;
+  dwarf2_per_cu *per_cu = nullptr;
 
   /* The pieces describing this variable.  */
   std::vector<dwarf_expr_piece> pieces;
@@ -110,8 +110,7 @@ struct piece_closure
    PIECES.  */
 
 static piece_closure *
-allocate_piece_closure (dwarf2_per_cu_data *per_cu,
-			dwarf2_per_objfile *per_objfile,
+allocate_piece_closure (dwarf2_per_cu *per_cu, dwarf2_per_objfile *per_objfile,
 			std::vector<dwarf_expr_piece> &&pieces,
 			const frame_info_ptr &frame)
 {
@@ -670,8 +669,7 @@ static const struct lval_funcs pieced_value_funcs = {
    found at SECT_OFF.  */
 
 static value *
-sect_variable_value (sect_offset sect_off,
-		     dwarf2_per_cu_data *per_cu,
+sect_variable_value (sect_offset sect_off, dwarf2_per_cu *per_cu,
 		     dwarf2_per_objfile *per_objfile)
 {
   const char *var_name = nullptr;
@@ -882,6 +880,34 @@ dwarf_expr_context::read_mem (gdb_byte *buf, CORE_ADDR addr,
 
 /* See expr.h.  */
 
+value *
+dwarf_expr_context::deref (CORE_ADDR addr, int size, struct type *type)
+{
+  gdb_byte *buf = (gdb_byte *) alloca (size);
+  this->read_mem (buf, addr, size);
+
+  if (type == nullptr)
+    type = this->address_type ();
+
+  /* If the size of the object read from memory is different
+     from the type length, we need to zero-extend it.  */
+  if (type->length () != size)
+    {
+      gdbarch *arch = this->m_per_objfile->objfile->arch ();
+      bfd_endian byte_order = gdbarch_byte_order (arch);
+      ULONGEST datum
+	= extract_unsigned_integer (buf, size, byte_order);
+
+      buf = (gdb_byte *) alloca (type->length ());
+      store_unsigned_integer (buf, type->length (),
+			      byte_order, datum);
+    }
+
+  return value_from_contents_and_address (type, buf, addr);
+}
+
+/* See expr.h.  */
+
 void
 dwarf_expr_context::push_dwarf_reg_entry_value (call_site_parameter_kind kind,
 						call_site_parameter_u kind_u,
@@ -890,7 +916,7 @@ dwarf_expr_context::push_dwarf_reg_entry_value (call_site_parameter_kind kind,
   ensure_have_per_cu (this->m_per_cu, "DW_OP_entry_value");
   ensure_have_frame (this->m_frame, "DW_OP_entry_value");
 
-  dwarf2_per_cu_data *caller_per_cu;
+  dwarf2_per_cu *caller_per_cu;
   dwarf2_per_objfile *caller_per_objfile;
   frame_info_ptr caller_frame = get_prev_frame (this->m_frame);
   call_site_parameter *parameter
@@ -1096,7 +1122,8 @@ dwarf_expr_context::fetch_result (struct type *type, struct type *subobj_type,
 
 value *
 dwarf_expr_context::evaluate (const gdb_byte *addr, size_t len, bool as_lval,
-			      dwarf2_per_cu_data *per_cu, const frame_info_ptr &frame,
+			      dwarf2_per_cu *per_cu,
+			      const frame_info_ptr &frame,
 			      const struct property_addr_info *addr_info,
 			      struct type *type, struct type *subobj_type,
 			      LONGEST subobj_offset)
@@ -1508,6 +1535,27 @@ dwarf_block_to_sp_offset (struct gdbarch *gdbarch, const gdb_byte *buf,
   return 1;
 }
 
+/* Return true if, for an expr evaluated in the context of FRAME, we can
+   assume that DW_OP_entry_value (expr) == expr.
+
+   We can assume this right after executing a call, when stopped at the
+   start of the called function, in other words, when:
+   - FRAME is the innermost frame, and
+   - FRAME->pc is the first insn in a function.  */
+
+static bool
+trivial_entry_value (frame_info_ptr frame)
+{
+  bool innermost_frame = frame_relative_level (frame) == 0;
+
+  /* Get pc corresponding to frame.  Use get_frame_address_in_block to make
+     sure we get a pc in the correct function in the case of tail calls.  */
+  CORE_ADDR pc = get_frame_address_in_block (frame);
+  bool at_first_insn = find_function_type (pc) != nullptr;
+
+  return innermost_frame && at_first_insn;
+}
+
 /* The engine for the expression evaluator.  Using the context in this
    object, evaluate the expression between OP_PTR and OP_END.  */
 
@@ -1917,7 +1965,6 @@ dwarf_expr_context::execute_stack_op (const gdb_byte *op_ptr,
 	case DW_OP_GNU_deref_type:
 	  {
 	    int addr_size = (op == DW_OP_deref ? this->m_addr_size : *op_ptr++);
-	    gdb_byte *buf = (gdb_byte *) alloca (addr_size);
 	    CORE_ADDR addr = fetch_address (0);
 	    struct type *type;
 
@@ -1932,21 +1979,7 @@ dwarf_expr_context::execute_stack_op (const gdb_byte *op_ptr,
 	    else
 	      type = address_type;
 
-	    this->read_mem (buf, addr, addr_size);
-
-	    /* If the size of the object read from memory is different
-	       from the type length, we need to zero-extend it.  */
-	    if (type->length () != addr_size)
-	      {
-		ULONGEST datum =
-		  extract_unsigned_integer (buf, addr_size, byte_order);
-
-		buf = (gdb_byte *) alloca (type->length ());
-		store_unsigned_integer (buf, type->length (),
-					byte_order, datum);
-	      }
-
-	    result_val = value_from_contents_and_address (type, buf, addr);
+	    result_val = this->deref (addr, addr_size, type);
 	    break;
 	  }
 
@@ -2275,6 +2308,17 @@ dwarf_expr_context::execute_stack_op (const gdb_byte *op_ptr,
 	    if (kind_u.dwarf_reg != -1)
 	      {
 		op_ptr += len;
+
+		if (trivial_entry_value (this->m_frame))
+		  {
+		    /* We can assume that DW_OP_entry_value (expr) == expr.
+		       Handle as DW_OP_regx.  */
+		    result_val
+		      = value_from_ulongest (address_type, kind_u.dwarf_reg);
+		    this->m_location = DWARF_VALUE_REGISTER;
+		    break;
+		  }
+
 		this->push_dwarf_reg_entry_value (CALL_SITE_PARAMETER_DWARF_REG,
 						  kind_u,
 						  -1 /* deref_size */);
@@ -2289,6 +2333,17 @@ dwarf_expr_context::execute_stack_op (const gdb_byte *op_ptr,
 		if (deref_size == -1)
 		  deref_size = this->m_addr_size;
 		op_ptr += len;
+
+		if (trivial_entry_value (this->m_frame))
+		  {
+		    /* We can assume that DW_OP_entry_value (expr) == expr.
+		       Handle as DW_OP_bregx;DW_OP_deref_size.  */
+		    CORE_ADDR addr
+		      = read_addr_from_reg (this->m_frame, kind_u.dwarf_reg);
+		    result_val = this->deref (addr, deref_size);
+		    break;
+		  }
+
 		this->push_dwarf_reg_entry_value (CALL_SITE_PARAMETER_DWARF_REG,
 						  kind_u, deref_size);
 		goto no_push;

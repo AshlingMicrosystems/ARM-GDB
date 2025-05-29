@@ -1,6 +1,6 @@
 /* Producer string parsers for GDB.
 
-   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+   Copyright (C) 2012-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -192,6 +192,30 @@ producer_is_clang (const char *producer, int *major, int *minor)
       if (sscanf (cs, "%d.%d", major, minor) == 2)
 	return true;
     }
+  return false;
+}
+
+/* See producer.h.  */
+
+bool
+producer_is_realview (const char *producer)
+{
+  static const char *const arm_idents[] = {
+    "ARM C Compiler, ADS",
+    "Thumb C Compiler, ADS",
+    "ARM C++ Compiler, ADS",
+    "Thumb C++ Compiler, ADS",
+    "ARM/Thumb C/C++ Compiler, RVCT",
+    "ARM C/C++ Compiler, RVCT"
+  };
+
+  if (producer == NULL)
+    return false;
+
+  for (const char *ident : arm_idents)
+    if (startswith (producer, ident))
+      return true;
+
   return false;
 }
 

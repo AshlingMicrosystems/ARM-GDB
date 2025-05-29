@@ -1,6 +1,6 @@
 /* Core dump and executable file functions below target vector, for GDB.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -48,8 +48,8 @@
 #include "gdbsupport/pathstuff.h"
 #include "gdbsupport/scoped_fd.h"
 #include "gdbsupport/x86-xstate.h"
-#include <unordered_map>
-#include <unordered_set>
+#include "gdbsupport/unordered_map.h"
+#include "gdbsupport/unordered_set.h"
 #include "cli/cli-cmds.h"
 #include "xml-tdesc.h"
 #include "memtag.h"
@@ -125,11 +125,11 @@ private:
 
   /* A type that maps a string to a build-id.  */
   using string_to_build_id_map
-    = std::unordered_map<std::string, const bfd_build_id *>;
+    = gdb::unordered_map<std::string, const bfd_build_id *>;
 
   /* A type that maps a build-id to a string.  */
   using build_id_to_string_map
-    = std::unordered_map<const bfd_build_id *, std::string>;
+    = gdb::unordered_map<const bfd_build_id *, std::string>;
 
   /* When loading a core file, the build-ids are extracted based on the
      file backed mappings.  This map associates the name of a file that was
@@ -405,11 +405,11 @@ core_target::build_file_mappings ()
     std::vector<region> regions;
   };
 
-  std::unordered_map<std::string, struct bfd *> bfd_map;
-  std::unordered_set<std::string> unavailable_paths;
+  gdb::unordered_map<std::string, struct bfd *> bfd_map;
+  gdb::unordered_set<std::string> unavailable_paths;
 
   /* All files mapped into the core file.  The key is the filename.  */
-  std::unordered_map<std::string, mapped_file> mapped_files;
+  gdb::unordered_map<std::string, mapped_file> mapped_files;
 
   /* See linux_read_core_file_mappings() in linux-tdep.c for an example
      read_core_file_mappings method.  */
@@ -540,11 +540,41 @@ core_target::build_file_mappings ()
 	  /* If ABFD was opened, but the wrong format, close it now.  */
 	  abfd = nullptr;
 
+	  /* When true, this indicates that the mapped contents of this
+	     file are available within the core file.  When false, some of
+	     the mapped contents are not available.  If the contents are
+	     entirely available within the core file, then we don't need to
+	     warn the user if GDB cannot find the file.  */
+	  bool content_is_in_core_file_p = true;
+
 	  /* Record all regions for this file as unavailable.  */
 	  for (const mapped_file::region &region : file_data.regions)
-	    m_core_unavailable_mappings.emplace_back (region.start,
-						      region.end
-						      - region.start);
+	    {
+	      /* Check to see if the region is available within the core
+		 file.  */
+	      bool found_region_in_core_file = false;
+	      for (const target_section &ts : m_core_section_table)
+		{
+		  if (ts.addr <= region.start && ts.endaddr >= region.end
+		      && (ts.the_bfd_section->flags & SEC_HAS_CONTENTS) != 0)
+		    {
+		      found_region_in_core_file = true;
+		      break;
+		    }
+		}
+
+	      /* This region is not available within the core file.
+		 Without the file available to read from it is not possible
+		 for GDB to read this mapping within the inferior.  Warn
+		 the user about this case.  */
+	      if (!found_region_in_core_file)
+		content_is_in_core_file_p = false;
+
+	      /* Record the unavailable region.  */
+	      m_core_unavailable_mappings.emplace_back (region.start,
+							region.end
+							- region.start);
+	    }
 
 	  /* And give the user an appropriate warning.  */
 	  if (build_id_mismatch)
@@ -564,7 +594,7 @@ core_target::build_file_mappings ()
 			 styled_string (file_name_style.style (),
 					expanded_fname.get ()));
 	    }
-	  else
+	  else if (!content_is_in_core_file_p)
 	    {
 	      if (expanded_fname == nullptr
 		  || filename == expanded_fname.get ())
@@ -774,7 +804,7 @@ rename_vmcore_idle_reg_sections (bfd *abfd, inferior *inf)
 
   /* The set of all /NN numbers found.  Needed so we can easily find unused
      numbers in the case that we need to rename some sections.  */
-  std::unordered_set<int> all_lwpids;
+  gdb::unordered_set<int> all_lwpids;
 
   /* A count of how many sections called .reg/0 we have found.  */
   unsigned zero_lwpid_count = 0;
@@ -927,7 +957,7 @@ locate_exec_from_corefile_exec_context (bfd *cbfd,
     execbfd = open_and_check_build_id (exec_name);
   else
     {
-      std::string p = (ldirname (bfd_get_filename (cbfd))
+      std::string p = (gdb_ldirname (bfd_get_filename (cbfd))
 		       + '/'
 		       + exec_name);
       execbfd = open_and_check_build_id (p.c_str ());
@@ -941,7 +971,7 @@ locate_exec_from_corefile_exec_context (bfd *cbfd,
   if (execbfd == nullptr)
     {
       const char *base_name = lbasename (exec_name);
-      std::string p = (ldirname (bfd_get_filename (cbfd))
+      std::string p = (gdb_ldirname (bfd_get_filename (cbfd))
 		       + '/'
 		       + base_name);
       execbfd = open_and_check_build_id (p.c_str ());
@@ -1174,7 +1204,7 @@ core_target_open (const char *arg, int from_tty)
       for (const gdb::unique_xmalloc_ptr<char> &a : ctx.args ())
 	argv.push_back (a.get ());
       gdb::array_view<char * const> view (argv.data (), argv.size ());
-      current_inferior ()->set_args (view);
+      current_inferior ()->set_args (view, true);
 
       /* And now copy the environment.  */
       current_inferior ()->environment = ctx.environment ();

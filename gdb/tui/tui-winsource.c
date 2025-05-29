@@ -1,6 +1,6 @@
 /* TUI display source/assembly window.
 
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -185,7 +185,7 @@ tui_source_window_base::update_source_window_with_addr (struct gdbarch *gdbarch,
   if (addr != 0)
     sal = find_pc_line (addr, 0);
 
-  update_source_window (gdbarch, sal);
+  maybe_update (gdbarch, sal);
 }
 
 /* Function to ensure that the source and/or disassembly windows
@@ -456,25 +456,15 @@ tui_source_window_base::rerender ()
     }
   else if (deprecated_safe_get_selected_frame () != NULL)
     {
-      symtab_and_line cursal
-	= get_current_source_symtab_and_line (current_program_space);
       frame_info_ptr frame = deprecated_safe_get_selected_frame ();
-      struct gdbarch *gdbarch = get_frame_arch (frame);
+      symtab_and_line sal = find_frame_sal (frame);
 
-      struct symtab *s = find_pc_line_symtab (get_frame_pc (frame));
-      if (this != tui_src_win ())
-	find_line_pc (s, cursal.line, &cursal.pc);
+      /* find_frame_sal does not always set SAL.PC, but we want to ensure
+	 that it is available in the SAL before updating the window.  */
+      get_frame_pc_if_available (frame, &sal.pc);
 
-      /* This centering code is copied from tui_source_window::maybe_update.
-	 It would be nice to do centering more often, and do it in just one
-	 location.  But since this is a regression fix, handle this
-	 conservatively for now.  */
-      int start_line = (cursal.line - ((height - box_size ()) / 2)) + 1;
-      if (start_line <= 0)
-	start_line = 1;
-      cursal.line = start_line;
-
-      update_source_window (gdbarch, cursal);
+      maybe_update (get_frame_arch (frame), sal);
+      update_exec_info (false);
     }
   else
     {

@@ -1,6 +1,6 @@
 /* Handle lists of commands, their decoding and documentation, for GDB.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -2041,40 +2041,28 @@ void
 print_doc_line (struct ui_file *stream, const char *str,
 		bool for_value_prefix)
 {
-  static char *line_buffer = 0;
-  static int line_size;
-  const char *p;
+  const char *p = strchr (str, '\n');
 
-  if (!line_buffer)
-    {
-      line_size = 80;
-      line_buffer = (char *) xmalloc (line_size);
-    }
+  /* Only copy the input string if we really need to.  */
+  std::optional<std::string> line_buffer;
+  if (p != nullptr)
+    line_buffer = std::string (str, p);
+  else if (for_value_prefix)
+    line_buffer = str;
 
-  /* Searches for the first end of line or the end of STR.  */
-  p = str;
-  while (*p && *p != '\n')
-    p++;
-  if (p - str > line_size - 1)
-    {
-      line_size = p - str + 1;
-      xfree (line_buffer);
-      line_buffer = (char *) xmalloc (line_size);
-    }
-  strncpy (line_buffer, str, p - str);
   if (for_value_prefix)
     {
-      if (islower (line_buffer[0]))
-	line_buffer[0] = toupper (line_buffer[0]);
-      gdb_assert (p > str);
-      if (line_buffer[p - str - 1] == '.')
-	line_buffer[p - str - 1] = '\0';
-      else
-	line_buffer[p - str] = '\0';
+      char &c = (*line_buffer)[0];
+      if (islower (c))
+	c = toupper (c);
+      if (line_buffer->back () == '.')
+	line_buffer->pop_back ();
     }
-  else
-    line_buffer[p - str] = '\0';
-  gdb_puts (line_buffer, stream);
+
+  gdb_puts (line_buffer.has_value ()
+	    ? line_buffer->c_str ()
+	    : str,
+	    stream);
 }
 
 /* Print one-line help for command C.
@@ -2452,7 +2440,7 @@ lookup_cmd (const char **line, struct cmd_list_element *list,
     }
   else if (c == CMD_LIST_AMBIGUOUS)
     {
-      /* Ambigous.  Local values should be off subcommands or called
+      /* Ambiguous.  Local values should be off subcommands or called
 	 values.  */
       int local_allow_unknown = (last_list ? last_list->allow_unknown :
 				 allow_unknown);

@@ -1,6 +1,6 @@
 /* libthread_db assisted debugging support, generic parts.
 
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -778,9 +778,6 @@ check_thread_db (struct thread_db_info *info, bool log_progress)
     }
   catch (const gdb_exception_error &except)
     {
-      if (warning_pre_print)
-	gdb_puts (warning_pre_print, gdb_stderr);
-
       exception_fprintf (gdb_stderr, except,
 			 _("libthread_db integrity checks failed: "));
 

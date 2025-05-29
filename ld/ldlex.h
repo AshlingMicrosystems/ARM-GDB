@@ -46,6 +46,7 @@ enum option_values
   OPTION_MAP,
   OPTION_NO_DEMANGLE,
   OPTION_NO_KEEP_MEMORY,
+  OPTION_NO_STATS,
   OPTION_NO_WARN_MISMATCH,
   OPTION_NO_WARN_SEARCH_MISMATCH,
   OPTION_NOINHIBIT_EXEC,
@@ -246,7 +247,6 @@ enum option_values
   OPTION_LIBPATH,
   OPTION_NOLIBPATH,
   /* Used by emultempl/alphaelf.em.  */
-  OPTION_TASO,
   OPTION_SECUREPLT,
   OPTION_NO_SECUREPLT,
   /* Used by emultempl/armelf.em.  */

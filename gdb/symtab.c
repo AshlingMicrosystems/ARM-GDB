@@ -1,6 +1,6 @@
 /* Symbol table lookup for the GNU debugger, GDB.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -75,7 +75,7 @@
 #include "gdbsupport/pathstuff.h"
 #include "gdbsupport/common-utils.h"
 #include <optional>
-#include <unordered_set>
+#include "gdbsupport/unordered_set.h"
 
 /* Forward declarations for local functions.  */
 
@@ -1911,7 +1911,7 @@ lookup_name_info::match_any ()
 {
   /* Lookup any symbol that "" would complete.  I.e., this matches all
      symbol names.  */
-  static const lookup_name_info lookup_name ("", symbol_name_match_type::FULL,
+  static const lookup_name_info lookup_name ("", symbol_name_match_type::WILD,
 					     true);
 
   return lookup_name;
@@ -2162,13 +2162,6 @@ lookup_symbol_aux (const char *name, symbol_name_match_type match_type,
 	("domain name = \"%s\", language = \"%s\")",
 	 domain_name (domain).c_str (), language_str (language));
     }
-
-  /* Make sure we do something sensible with is_a_field_of_this, since
-     the callers that set this parameter to some non-null value will
-     certainly use it later.  If we don't set it, the contents of
-     is_a_field_of_this are undefined.  */
-  if (is_a_field_of_this != NULL)
-    memset (is_a_field_of_this, 0, sizeof (*is_a_field_of_this));
 
   langdef = language_def (language);
 
@@ -4499,7 +4492,7 @@ info_sources_filter::matches (const char *fullname) const
       switch (m_match_type)
 	{
 	case match_on::DIRNAME:
-	  dirname = ldirname (fullname);
+	  dirname = gdb_ldirname (fullname);
 	  to_match = dirname.c_str ();
 	  break;
 	case match_on::BASENAME:
@@ -4714,7 +4707,7 @@ info_sources_worker (struct ui_out *uiout,
 	  if (uiout->is_mi_like_p ())
 	    {
 	      const char *debug_info_state;
-	      if (objfile_has_symbols (objfile))
+	      if (objfile->has_symbols ())
 		{
 		  if (debug_fully_readin)
 		    debug_info_state = "fully-read";
@@ -4730,7 +4723,7 @@ info_sources_worker (struct ui_out *uiout,
 	      if (!debug_fully_readin)
 		uiout->text ("(Full debug information has not yet been read "
 			     "for this file.)\n");
-	      if (!objfile_has_symbols (objfile))
+	      if (!objfile->has_symbols ())
 		uiout->text ("(Objfile has no debug information.)\n");
 	      uiout->text ("\n");
 	    }
@@ -4910,7 +4903,7 @@ global_symbol_searcher::expand_symtabs
     {
       return file_matches (filename, m_filenames, basenames);
     };
-  gdb::function_view<expand_symtabs_file_matcher_ftype> file_matcher = nullptr;
+  expand_symtabs_file_matcher file_matcher = nullptr;
   if (!m_filenames.empty ())
     file_matcher = do_file_match;
 
@@ -5623,7 +5616,7 @@ rbreak_command (const char *regexp, int from_tty)
     spec.add_filename (std::move (file_name));
   std::vector<symbol_search> symbols = spec.search ();
 
-  std::unordered_set<std::string> seen_names;
+  gdb::unordered_set<std::string> seen_names;
   scoped_rbreak_breakpoints finalize;
   int err_count = 0;
 
@@ -6550,7 +6543,7 @@ find_main_name (void)
      language.  It is easy to guaranty this with Ada, since we use a
      special symbol generated only when the main in Ada to find the name
      of the main procedure.  It is difficult however to see how this can
-     be guarantied for languages such as C, for instance.  This suggests
+     be guaranteed for languages such as C, for instance.  This suggests
      that order of call for these methods becomes important, which means
      a more complicated approach.  */
   new_main_name = ada_main_name ();
@@ -6634,31 +6627,6 @@ main_language (void)
     find_main_name ();
 
   return info->language_of_main;
-}
-
-/* Return 1 if the supplied producer string matches the ARM RealView
-   compiler (armcc).  */
-
-bool
-producer_is_realview (const char *producer)
-{
-  static const char *const arm_idents[] = {
-    "ARM C Compiler, ADS",
-    "Thumb C Compiler, ADS",
-    "ARM C++ Compiler, ADS",
-    "Thumb C++ Compiler, ADS",
-    "ARM/Thumb C/C++ Compiler, RVCT",
-    "ARM C/C++ Compiler, RVCT"
-  };
-
-  if (producer == NULL)
-    return false;
-
-  for (const char *ident : arm_idents)
-    if (startswith (producer, ident))
-      return true;
-
-  return false;
 }
 
 

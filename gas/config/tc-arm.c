@@ -3106,7 +3106,7 @@ find_real_start (symbolS * symbolP)
 
   if (new_target == NULL)
     {
-      as_warn (_("Failed to find real start of function: %s\n"), name);
+      as_warn (_("Failed to find real start of function: %s"), name);
       new_target = symbolP;
     }
 
@@ -3260,7 +3260,6 @@ s_thumb_set (int equiv)
 	 for this symbol.  */
       if (listing & LISTING_SYMBOLS)
 	{
-	  extern struct list_info_struct * listing_tail;
 	  fragS * dummy_frag = (fragS * ) xmalloc (sizeof (fragS));
 
 	  memset (dummy_frag, 0, sizeof (fragS));
@@ -3435,7 +3434,11 @@ s_ccs_def (int name)
   if (codecomposer_syntax)
     s_globl (name);
   else
+#ifdef OBJ_COFF
+    obj_coff_def (name);
+#else
     as_bad (_(".def pseudo-op only available with -mccs flag."));
+#endif
 }
 
 /* Directives: Literal pools.  */
@@ -3668,7 +3671,7 @@ tc_start_label_without_colon (void)
     {
       const char *label = input_line_pointer;
 
-      while (!is_end_of_line[(int) label[-1]])
+      while (!is_end_of_stmt (label[-1]))
 	--label;
 
       if (*label == '.')
@@ -4257,7 +4260,7 @@ s_arm_unwind_save_pseudo (int regno)
       add_unwind_opcode (op, 1);
       break;
     default:
-      as_bad (_("Unknown register no. encountered: %d\n"), regno);
+      as_bad (_("Unknown register no. encountered: %d"), regno);
     }
 }
 
@@ -26599,10 +26602,6 @@ arm_handle_align (fragS * fragP)
 
   bytes = fragP->fr_next->fr_address - fragP->fr_address - fragP->fr_fix;
   p = fragP->fr_literal + fragP->fr_fix;
-  fix = 0;
-
-  if (bytes > MAX_MEM_FOR_RS_ALIGN_CODE)
-    bytes &= MAX_MEM_FOR_RS_ALIGN_CODE;
 
   gas_assert ((fragP->tc_frag_data.thumb_mode & MODE_RECORDED) != 0);
 
@@ -26633,11 +26632,9 @@ arm_handle_align (fragS * fragP)
 #endif
     }
 
-  fragP->fr_var = noop_size;
-
-  if (bytes & (noop_size - 1))
+  fix = bytes & (noop_size - 1);
+  if (fix != 0)
     {
-      fix = bytes & (noop_size - 1);
 #ifdef OBJ_ELF
       insert_data_mapping_symbol (state, fragP->fr_fix, fragP, fix);
 #endif
@@ -26661,45 +26658,12 @@ arm_handle_align (fragS * fragP)
       noop_size = 4;
     }
 
-  while (bytes >= noop_size)
-    {
-      memcpy (p, noop, noop_size);
-      p += noop_size;
-      bytes -= noop_size;
-      fix += noop_size;
-    }
-
   fragP->fr_fix += fix;
-}
-
-/* Called from md_do_align.  Used to create an alignment
-   frag in a code section.  */
-
-void
-arm_frag_align_code (int n, int max)
-{
-  char * p;
-
-  /* We assume that there will never be a requirement
-     to support alignments greater than MAX_MEM_FOR_RS_ALIGN_CODE bytes.  */
-  if (max > MAX_MEM_FOR_RS_ALIGN_CODE)
+  if (bytes != 0)
     {
-      char err_msg[128];
-
-      sprintf (err_msg,
-	_("alignments greater than %d bytes not supported in .text sections."),
-	MAX_MEM_FOR_RS_ALIGN_CODE + 1);
-      as_fatal ("%s", err_msg);
+      fragP->fr_var = noop_size;
+      memcpy (p, noop, noop_size);
     }
-
-  p = frag_var (rs_align_code,
-		MAX_MEM_FOR_RS_ALIGN_CODE,
-		1,
-		(relax_substateT) max,
-		(symbolS *) NULL,
-		(offsetT) n,
-		(char *) NULL);
-  *p = 0;
 }
 
 /* Perform target specific initialisation of a frag.
@@ -31856,7 +31820,7 @@ arm_parse_arch (const char *str)
 	return true;
       }
 
-  as_bad (_("unknown architecture `%s'\n"), str);
+  as_bad (_("unknown architecture `%s'"), str);
   return false;
 }
 
@@ -31872,7 +31836,7 @@ arm_parse_fpu (const char * str)
 	return true;
       }
 
-  as_bad (_("unknown floating point format `%s'\n"), str);
+  as_bad (_("unknown floating point format `%s'"), str);
   return false;
 }
 
@@ -31888,7 +31852,7 @@ arm_parse_float_abi (const char * str)
 	return true;
       }
 
-  as_bad (_("unknown floating point abi `%s'\n"), str);
+  as_bad (_("unknown floating point abi `%s'"), str);
   return false;
 }
 
@@ -31904,7 +31868,7 @@ arm_parse_eabi (const char * str)
 	meabi_flags = opt->value;
 	return true;
       }
-  as_bad (_("unknown EABI `%s'\n"), str);
+  as_bad (_("unknown EABI `%s'"), str);
   return false;
 }
 #endif
@@ -32416,7 +32380,7 @@ aeabi_set_public_attributes (void)
   if (arch == -1)
     arch = get_aeabi_cpu_arch_from_fset (&flags_arch, &flags_ext, &profile, 0);
   if (arch == -1)
-    as_bad (_("no architecture contains all the instructions used\n"));
+    as_bad (_("no architecture contains all the instructions used"));
 
   /* Tag_CPU_name.  */
   if (selected_cpu_name[0])
@@ -32676,7 +32640,7 @@ s_arm_arch (int ignored ATTRIBUTE_UNUSED)
 	return;
       }
 
-  as_bad (_("unknown architecture `%s'\n"), name);
+  as_bad (_("unknown architecture `%s'"), name);
   *input_line_pointer = saved_char;
   ignore_rest_of_line ();
 }
@@ -32712,7 +32676,7 @@ s_arm_object_arch (int ignored ATTRIBUTE_UNUSED)
 	return;
       }
 
-  as_bad (_("unknown architecture `%s'\n"), name);
+  as_bad (_("unknown architecture `%s'"), name);
   *input_line_pointer = saved_char;
   ignore_rest_of_line ();
 }
@@ -32814,7 +32778,7 @@ s_arm_arch_extension (int ignored ATTRIBUTE_UNUSED)
       }
 
   if (opt->name == NULL)
-    as_bad (_("unknown architecture extension `%s'\n"), name);
+    as_bad (_("unknown architecture extension `%s'"), name);
 
   *input_line_pointer = saved_char;
 }
@@ -32855,7 +32819,7 @@ s_arm_fpu (int ignored ATTRIBUTE_UNUSED)
 	return;
       }
 
-  as_bad (_("unknown floating point format `%s'\n"), name);
+  as_bad (_("unknown floating point format `%s'"), name);
   *input_line_pointer = saved_char;
   ignore_rest_of_line ();
 }

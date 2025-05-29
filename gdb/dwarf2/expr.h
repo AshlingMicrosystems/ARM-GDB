@@ -1,6 +1,6 @@
 /* DWARF 2 Expression Evaluator.
 
-   Copyright (C) 2001-2024 Free Software Foundation, Inc.
+   Copyright (C) 2001-2025 Free Software Foundation, Inc.
 
    Contributed by Daniel Berlin <dan@dberlin.org>.
 
@@ -141,7 +141,7 @@ struct dwarf_expr_context
      The ADDR_INFO property can be specified to override the range of
      memory addresses with the passed in buffer.  */
   value *evaluate (const gdb_byte *addr, size_t len, bool as_lval,
-		   dwarf2_per_cu_data *per_cu, const frame_info_ptr &frame,
+		   dwarf2_per_cu *per_cu, const frame_info_ptr &frame,
 		   const struct property_addr_info *addr_info = nullptr,
 		   struct type *type = nullptr,
 		   struct type *subobj_type = nullptr,
@@ -203,7 +203,7 @@ private:
   frame_info_ptr m_frame = nullptr;
 
   /* Compilation unit used for the evaluation.  */
-  dwarf2_per_cu_data *m_per_cu = nullptr;
+  dwarf2_per_cu *m_per_cu = nullptr;
 
   /* Property address info used for the evaluation.  */
   const struct property_addr_info *m_addr_info = nullptr;
@@ -256,6 +256,10 @@ private:
      but with the address being 0.  In this situation, we arrange for
      memory reads to come from the passed-in buffer.  */
   void read_mem (gdb_byte *buf, CORE_ADDR addr, size_t length);
+
+  /* Deref ADDR with size SIZE and return a value of type TYPE.
+     If TYPE == nullptr, defaults to this->address_type ().  */
+  value *deref (CORE_ADDR addr, int size, struct type *type = nullptr);
 };
 
 /* Return the value of register number REG (a DWARF register number),

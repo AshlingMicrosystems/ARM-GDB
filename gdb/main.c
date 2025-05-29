@@ -1,6 +1,6 @@
 /* Top level stuff for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -644,9 +644,9 @@ captured_main_1 (struct captured_main_args *context)
   int save_auto_load;
   int ret = 1;
 
-  const char *no_color = getenv ("NO_COLOR");
-  if (no_color != nullptr && *no_color != '\0')
-    cli_styling = false;
+  /* Check for environment variables which might cause GDB to start with
+     styling disabled.  */
+  disable_styling_from_environment ();
 
 #ifdef HAVE_USEFUL_SBRK
   /* Set this before constructing scoped_command_stats.  */
@@ -672,6 +672,8 @@ captured_main_1 (struct captured_main_args *context)
   /* Ensure stderr is unbuffered.  A Cygwin pty or pipe is implemented
      as a Windows pipe, and Windows buffers on pipes.  */
   setvbuf (stderr, NULL, _IONBF, BUFSIZ);
+
+  windows_initialize_console ();
 #endif
 
   /* Note: `error' cannot be called before this point, because the
@@ -705,7 +707,7 @@ captured_main_1 (struct captured_main_args *context)
 
   /* Prefix warning messages with the command name.  */
   gdb::unique_xmalloc_ptr<char> tmp_warn_preprint
-    = xstrprintf ("%s: warning: ", gdb_program_name);
+    = xstrprintf ("%s: ", gdb_program_name);
   warning_pre_print = tmp_warn_preprint.get ();
 
   current_directory = getcwd (NULL, 0);
@@ -1027,7 +1029,7 @@ captured_main_1 (struct captured_main_args *context)
 	quiet = 1;
 
 	/* Disable all output styling when running in batch mode.  */
-	cli_styling = false;
+	disable_cli_styling ();
       }
   }
 
@@ -1078,7 +1080,8 @@ captured_main_1 (struct captured_main_args *context)
       execarg = argv[optind];
       ++optind;
       current_inferior ()->set_args
-	(gdb::array_view<char * const> (&argv[optind], argc - optind));
+	(gdb::array_view<char * const> (&argv[optind], argc - optind),
+	 startup_with_shell);
     }
   else
     {
@@ -1123,7 +1126,7 @@ captured_main_1 (struct captured_main_args *context)
 
   /* Do these (and anything which might call wrap_here or *_filtered)
      after initialize_all_files() but before the interpreter has been
-     installed.  Otherwize the help/version messages will be eaten by
+     installed.  Otherwise the help/version messages will be eaten by
      the interpreter's output handler.  */
 
   if (print_version)
@@ -1168,7 +1171,7 @@ captured_main_1 (struct captured_main_args *context)
 
   /* Set off error and warning messages with a blank line.  */
   tmp_warn_preprint.reset ();
-  warning_pre_print = _("\nwarning: ");
+  warning_pre_print = "\n";
 
   /* Read and execute the system-wide gdbinit file, if it exists.
      This is done *before* all the command line arguments are
@@ -1273,7 +1276,7 @@ captured_main_1 (struct captured_main_args *context)
     current_inferior ()->set_tty (ttyarg);
 
   /* Error messages should no longer be distinguished with extra output.  */
-  warning_pre_print = _("warning: ");
+  warning_pre_print = "";
 
   /* Read the .gdbinit file in the current directory, *if* it isn't
      the same as the $HOME/.gdbinit file (it should exist, also).  */
