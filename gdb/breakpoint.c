@@ -50,7 +50,6 @@
 #include "cli/cli-script.h"
 #include "block.h"
 #include "solib.h"
-#include "solist.h"
 #include "observable.h"
 #include "memattr.h"
 #include "ada-lang.h"
@@ -5137,7 +5136,7 @@ print_solib_event (bool is_catchpoint)
 	  if (!first)
 	    current_uiout->text ("    ");
 	  first = false;
-	  current_uiout->field_string ("library", iter->so_name);
+	  current_uiout->field_string ("library", iter->name);
 	  current_uiout->text ("\n");
 	}
     }
@@ -8145,7 +8144,7 @@ disable_breakpoints_in_unloaded_shlib (program_space *pspace, const solib &solib
 	      target_terminal::ours_for_output ();
 	      warning (_("Temporarily disabling breakpoints "
 			 "for unloaded shared library \"%s\""),
-		       solib.so_name.c_str ());
+		       solib.name.c_str ());
 	      disabled_shlib_breaks = true;
 	    }
 	}

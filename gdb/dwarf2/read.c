@@ -3464,7 +3464,7 @@ void
 cooked_index_worker_debug_info::process_skeletonless_type_units
   (dwarf2_per_objfile *per_objfile, cooked_index_worker_result *storage)
 {
-  scoped_time_it time_it ("DWARF skeletonless type units");
+  scoped_time_it time_it ("DWARF skeletonless type units", m_per_command_time);
 
   /* Skeletonless TUs in DWP files without .gdb_index is not supported yet.  */
   if (per_objfile->per_bfd->dwp_file == nullptr)
@@ -3573,7 +3573,7 @@ cooked_index_worker_debug_info::do_reading ()
       gdb_assert (iter != last);
       workers.add_task ([this, task_count, iter, last] ()
 	{
-	  scoped_time_it time_it ("DWARF indexing worker");
+	  scoped_time_it time_it ("DWARF indexing worker", m_per_command_time);
 	  process_units (task_count, iter, last);
 	});
 
@@ -9999,7 +9999,7 @@ handle_member_location (struct die_info *die, struct dwarf2_cu *cu,
 	      dlbaton->per_objfile = per_objfile;
 	      dlbaton->per_cu = cu->per_cu;
 
-	      field->set_loc_dwarf_block (dlbaton);
+	      field->set_loc_dwarf_block_addr (dlbaton);
 	    }
 	}
       else
@@ -10010,7 +10010,28 @@ handle_member_location (struct die_info *die, struct dwarf2_cu *cu,
     {
       attr = dwarf2_attr (die, DW_AT_data_bit_offset, cu);
       if (attr != nullptr)
-	field->set_loc_bitpos (attr->unsigned_constant ().value_or (0));
+	{
+	  if (attr->form_is_constant ())
+	    field->set_loc_bitpos (attr->unsigned_constant ().value_or (0));
+	  else if (attr->form_is_block ())
+	    {
+	      /* This is a DWARF extension.  See
+		 https://dwarfstd.org/issues/250501.1.html.  */
+	      dwarf2_per_objfile *per_objfile = cu->per_objfile;
+	      dwarf2_locexpr_baton *dlbaton
+		= OBSTACK_ZALLOC (&per_objfile->objfile->objfile_obstack,
+				  dwarf2_locexpr_baton);
+	      dlbaton->data = attr->as_block ()->data;
+	      dlbaton->size = attr->as_block ()->size;
+	      dlbaton->per_objfile = per_objfile;
+	      dlbaton->per_cu = cu->per_cu;
+
+	      field->set_loc_dwarf_block_bitpos (dlbaton);
+	    }
+	  else
+	    complaint (_("Unsupported form %s for DW_AT_data_bit_offset"),
+		       dwarf_form_name (attr->form));
+	}
     }
 }
 

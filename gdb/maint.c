@@ -920,9 +920,9 @@ maintenance_show_worker_threads (struct ui_file *file, int from_tty,
 }
 
 
-/* If true, display time usage both at startup and for each command.  */
+/* See maint.h.  */
 
-static bool per_command_time;
+bool per_command_time;
 
 /* If true, display space usage both at startup and for each command.  */
 
@@ -1151,10 +1151,32 @@ set_per_command_cmd (const char *args, int from_tty)
       }
 }
 
+/* Handle "mt set per-command time".  Warn if per-thread run time
+   information is not possible.  */
+
+static void
+maintenance_set_command_time_cmd (const char *args, int from_tty,
+				  cmd_list_element *c)
+{
+  /* No point warning if this platform can't use multiple threads at
+     all.  */
+#if CXX_STD_THREAD
+  static bool already_warned = false;
+  if (per_command_time
+      && !get_run_time_thread_scope_available ()
+      && !already_warned)
+    {
+      warning (_("\
+per-thread run time information not available on this platform"));
+      already_warned = true;
+    }
+#endif
+}
+
 /* See maint.h.  */
 
-scoped_time_it::scoped_time_it (const char *what)
-  : m_enabled (per_command_time),
+scoped_time_it::scoped_time_it (const char *what, bool enabled)
+  : m_enabled (enabled),
     m_what (what),
     m_start_wall (m_enabled
 		  ? std::chrono::steady_clock::now ()
@@ -1423,7 +1445,7 @@ Show whether to display per-command execution time."),
 			   _("\
 If enabled, the execution time for each command will be\n\
 displayed following the command's output."),
-			   NULL, NULL,
+			   maintenance_set_command_time_cmd, NULL,
 			   &per_command_setlist, &per_command_showlist);
 
   add_setshow_boolean_cmd ("space", class_maintenance,
