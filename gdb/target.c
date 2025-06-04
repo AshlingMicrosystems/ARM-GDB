@@ -108,6 +108,8 @@ bool may_insert_fast_tracepoints = true;
 
 bool may_stop = true;
 
+bool ash_nonstop = false;
+
 /* Non-zero if we want to see trace of target level stuff.  */
 
 static unsigned int targetdebug = 0;
@@ -4455,6 +4457,7 @@ static bool may_insert_breakpoints_1 = true;
 static bool may_insert_tracepoints_1 = true;
 static bool may_insert_fast_tracepoints_1 = true;
 static bool may_stop_1 = true;
+static bool ash_nonstop_1 = false;
 
 /* Make the user-set values match the real values again.  */
 
@@ -4467,6 +4470,7 @@ update_target_permissions (void)
   may_insert_tracepoints_1 = may_insert_tracepoints;
   may_insert_fast_tracepoints_1 = may_insert_fast_tracepoints;
   may_stop_1 = may_stop;
+  ash_nonstop_1 = ash_nonstop;
 }
 
 /* The one function handles (most of) the permission flags in the same
@@ -4487,6 +4491,7 @@ set_target_permissions (const char *args, int from_tty,
   may_insert_tracepoints = may_insert_tracepoints_1;
   may_insert_fast_tracepoints = may_insert_fast_tracepoints_1;
   may_stop = may_stop_1;
+  ash_nonstop = ash_nonstop_1;
   update_observer_mode ();
 }
 
@@ -4612,6 +4617,14 @@ Set permission to interrupt or signal the target."), _("\
 Show permission to interrupt or signal the target."), _("\
 When this permission is on, GDB may interrupt/stop the target's execution.\n\
 Otherwise, any attempt to interrupt or stop will be ignored."),
+			   set_target_permissions, NULL,
+			   &setlist, &showlist);
+
+  add_setshow_boolean_cmd ("ash-nonstop", class_support,
+			   &ash_nonstop_1, _("\
+Set permission to interrupt or signal the target."), _("\
+Show permission to interrupt or signal the target."), _("\
+When this permission is on, GDB will not attempt to interrupt/stop the target's execution briefly at 'target remote'."),
 			   set_target_permissions, NULL,
 			   &setlist, &showlist);
 

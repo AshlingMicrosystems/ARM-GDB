@@ -2757,18 +2757,21 @@ notice_new_inferior (thread_info *thr, bool leave_running, int from_tty)
     {
       struct inferior *inferior = current_inferior ();
 
-      /* We're going to install breakpoints, and poke at memory,
-	 ensure that the inferior is stopped for a moment while we do
-	 that.  */
-      target_stop (inferior_ptid);
+      if(ash_nonstop == false)
+      {
+        /* We're going to install breakpoints, and poke at memory,
+        ensure that the inferior is stopped for a moment while we do
+        that.  */
+        target_stop (inferior_ptid);
 
-      inferior->control.stop_soon = STOP_QUIETLY_REMOTE;
+        inferior->control.stop_soon = STOP_QUIETLY_REMOTE;
 
-      /* Wait for stop before proceeding.  */
-      inferior->add_continuation ([=] ()
-	{
-	  attach_post_wait (from_tty, mode);
-	});
+        /* Wait for stop before proceeding.  */
+        inferior->add_continuation ([=] ()
+        {
+          attach_post_wait (from_tty, mode);
+        });
+      }
 
       return;
     }
