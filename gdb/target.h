@@ -2574,6 +2574,7 @@ extern bool may_insert_breakpoints;
 extern bool may_insert_tracepoints;
 extern bool may_insert_fast_tracepoints;
 extern bool may_stop;
+extern bool ash_nonstop;
 
 extern void update_target_permissions (void);
 
